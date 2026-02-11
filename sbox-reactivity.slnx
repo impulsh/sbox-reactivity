@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Sandbox.Reactivity.Tests/Sandbox.Reactivity.Tests.csproj" />
+  <Project Path="src/Sandbox.Reactivity/Code/Sandbox.Reactivity.csproj" />
+  <Project Path="src/Sandbox.Reactivity/Editor/Sandbox.Reactivity.editor.csproj" />
+</Solution>

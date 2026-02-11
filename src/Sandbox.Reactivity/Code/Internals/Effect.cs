@@ -1,0 +1,195 @@
+using System.Buffers;
+
+namespace Sandbox.Reactivity.Internals;
+
+/// <summary>
+/// A function that runs whenever any of the dependencies that were read during its execution have changed.
+/// </summary>
+/// <seealso cref="Reactive.Effect(Action)" />
+/// <seealso cref="Reactive.Effect(Func{Action?})" />
+internal class Effect : IReaction, IDisposable
+{
+	/// <summary>
+	/// The list of effects that were created while this effect was executing.
+	/// </summary>
+	private readonly List<Effect> _children = [];
+
+	/// <summary>
+	/// The function to call when this effect runs.
+	/// </summary>
+	private readonly Func<Action?> _fn;
+
+	/// <summary>
+	/// Whether this effect will track reads of reactive objects during execution to add as dependencies.
+	/// </summary>
+	private readonly bool _shouldTrackDependencies;
+
+	/// <summary>
+	/// The read value of each dependency as this effect was running. Used if this effect returns a teardown function.
+	/// </summary>
+	private List<object?>? _capturedValues;
+
+	/// <summary>
+	/// Whether this effect is disposed and can no longer run.
+	/// </summary>
+	private bool _isDisposed;
+
+	/// <summary>
+	/// The teardown function that was returned in the last run.
+	/// </summary>
+	private Action? _teardown;
+
+	internal Effect(Func<Action?> fn, Effect? parent, bool shouldTrackDependencies)
+	{
+		_shouldTrackDependencies = shouldTrackDependencies;
+		_fn = fn;
+		parent?._children.Add(this);
+	}
+
+	public void Dispose()
+	{
+		if (_isDisposed)
+		{
+			return;
+		}
+
+		_isDisposed = true;
+		Teardown();
+	}
+
+	public List<IProducer> Dependencies { get; } = [];
+
+	public uint ReadVersion { get; private set; }
+
+	public ReactionState State { get; set; }
+
+	bool IReaction.IsConnectedToEffect => true;
+
+	void IReaction.OnDependencyChanged(ReactionState newState)
+	{
+		if (_isDisposed || State < newState)
+		{
+			// disposed or this effect has already been scheduled to run
+			return;
+		}
+
+		State = newState;
+		Reactive.Runtime.ScheduleEffect(this);
+	}
+
+	/// <summary>
+	/// Called when the effect has been instantiated for the first time, or when a dependency changes.
+	/// </summary>
+	public void Run()
+	{
+		if (_isDisposed)
+		{
+			return;
+		}
+
+		Teardown();
+
+		var previousEffect = Reactive.Runtime.CurrentEffect;
+		var previousReaction = Reactive.Runtime.CurrentReaction;
+		var previousIsUntracking = Reactive.Runtime.IsUntracking;
+
+		Reactive.Runtime.CurrentEffect = this;
+		Reactive.Runtime.CurrentReaction = _shouldTrackDependencies ? this : null;
+		Reactive.Runtime.IsUntracking = !_shouldTrackDependencies;
+
+		try
+		{
+			_teardown = _fn();
+		}
+		finally
+		{
+			Reactive.Runtime.CurrentEffect = previousEffect;
+			Reactive.Runtime.CurrentReaction = previousReaction;
+			Reactive.Runtime.IsUntracking = previousIsUntracking;
+		}
+
+		// capture the value of each dependency if there's a teardown function so we can restore it later
+		if (_teardown != null && Dependencies.Count > 0)
+		{
+			_capturedValues ??= new List<object?>(Dependencies.Count);
+
+			foreach (var producer in Dependencies)
+			{
+				_capturedValues.Add(producer.NonReactiveValue);
+			}
+		}
+
+		ReadVersion = Reactive.Runtime.Version;
+		State = ReactionState.UpToDate;
+	}
+
+	/// <summary>
+	/// Disposes of any child effects, runs the teardown function if possible, and removes any dependencies + this
+	/// effect as a reaction to them.
+	/// </summary>
+	private void Teardown()
+	{
+		// clear any child effects
+		if (_children.Count > 0)
+		{
+			foreach (var child in _children)
+			{
+				child.Dispose();
+			}
+
+			_children.Clear();
+		}
+
+		// run teardown function if any
+		if (_teardown != null)
+		{
+			if (_capturedValues is not { Count: > 0 })
+			{
+				_teardown();
+				_teardown = null;
+			}
+			else
+			{
+				// save current dependency values and restore captured values
+				var count = _capturedValues.Count;
+				var currentValues = ArrayPool<object?>.Shared.Rent(count);
+
+				for (var i = 0; i < count; i++)
+				{
+					var producer = Dependencies[i];
+
+					currentValues[i] = producer.NonReactiveValue;
+					producer.NonReactiveValue = _capturedValues[i];
+				}
+
+				try
+				{
+					_teardown();
+				}
+				finally
+				{
+					// restore current values
+					for (var i = 0; i < count; i++)
+					{
+						Dependencies[i].NonReactiveValue = currentValues[i];
+					}
+
+					ArrayPool<object?>.Shared.Return(currentValues);
+					_teardown = null;
+					_capturedValues.Clear();
+				}
+			}
+		}
+
+		// clear any dependencies
+		if (Dependencies.Count > 0)
+		{
+			foreach (var producer in Dependencies)
+			{
+				producer.RemoveReaction(this);
+			}
+
+			Dependencies.Clear();
+		}
+	}
+}
