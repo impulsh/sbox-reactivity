@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Threading;
 
 namespace Sandbox.Reactivity.Internals;
 
@@ -25,6 +26,11 @@ internal class Effect : IReaction, IDisposable
 	private readonly bool _shouldTrackDependencies;
 
 	/// <summary>
+	/// The current cancellation token source for this effect, if any.
+	/// </summary>
+	private CancellationTokenSource? _cancelSource;
+
+	/// <summary>
 	/// The read value of each dependency as this effect was running. Used if this effect returns a teardown function.
 	/// </summary>
 	private List<object?>? _capturedValues;
@@ -45,6 +51,12 @@ internal class Effect : IReaction, IDisposable
 		_fn = fn;
 		parent?._children.Add(this);
 	}
+
+	/// <summary>
+	/// Returns a cancellation token for this effect that will cancel when it re-runs, or when it disposes.
+	/// </summary>
+	public CancellationToken CancelToken =>
+		_isDisposed ? CancellationToken.None : (_cancelSource ??= new CancellationTokenSource()).Token;
 
 	public void Dispose()
 	{
@@ -190,6 +202,14 @@ internal class Effect : IReaction, IDisposable
 			}
 
 			Dependencies.Clear();
+		}
+
+		// perform cancellation
+		if (_cancelSource != null)
+		{
+			_cancelSource.Cancel();
+			_cancelSource.Dispose();
+			_cancelSource = null;
 		}
 	}
 }
