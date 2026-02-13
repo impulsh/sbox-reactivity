@@ -166,6 +166,76 @@ public static class Reactive
 		Timeout(callback, (int)duration.TotalMilliseconds);
 	}
 
+	/// <summary>
+	/// Creates a function that runs at a regular interval. If the current reactivity scope is disposed, the interval
+	/// is cancelled and the function will no longer run.
+	/// </summary>
+	/// <param name="callback">The function to run.</param>
+	/// <param name="milliseconds">How long to wait between runs.</param>
+	/// <param name="immediate">
+	/// Whether to run the function immediately instead of waiting for the first interval.
+	/// </param>
+#pragma warning disable TUnit0031
+	public static async void Interval(Action callback, int milliseconds, bool immediate = false)
+#pragma warning restore TUnit0031
+	{
+		try
+		{
+			if (Runtime.CurrentEffect is not { } parent)
+			{
+				throw new InvalidOperationException("Timeout must be created inside an effect root");
+			}
+
+			var token = parent.CancelToken;
+
+			if (immediate)
+			{
+				using (new UntrackScope())
+				{
+					callback();
+				}
+			}
+
+			while (!token.IsCancellationRequested)
+			{
+#if SANDBOX
+				await GameTask.Delay(milliseconds, token);
+#else
+				await Task.Delay(milliseconds, token);
+#endif
+				token.ThrowIfCancellationRequested();
+
+				callback();
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception e)
+		{
+#if SANDBOX
+			Log.Error
+#else
+			await Console.Error.WriteLineAsync
+#endif
+				($"Exception occurred during timeout: {e}");
+		}
+	}
+
+	/// <summary>
+	/// Creates a function that runs at a regular interval. If the current reactivity scope is disposed, the interval
+	/// is cancelled and the function will no longer run.
+	/// </summary>
+	/// <param name="callback">The function to run.</param>
+	/// <param name="duration">How long to wait between runs.</param>
+	/// <param name="immediate">
+	/// Whether to run the function immediately instead of waiting for the first interval.
+	/// </param>
+	public static void Interval(Action callback, TimeSpan duration, bool immediate = false)
+	{
+		Interval(callback, (int)duration.TotalMilliseconds, immediate);
+	}
+
 	/// <inheritdoc cref="Runtime.Flush" />
 	public static void Flush()
 	{
