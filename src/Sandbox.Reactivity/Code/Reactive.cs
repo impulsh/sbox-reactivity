@@ -1,5 +1,6 @@
 #if !SANDBOX
 using System.Threading;
+using System.Threading.Tasks;
 #endif
 using System.Diagnostics;
 using Sandbox.Reactivity.Internals;
@@ -66,9 +67,7 @@ public static class Reactive
 	/// </remarks>
 	public static void Effect(Func<Action?> callback)
 	{
-		var parent = Runtime.CurrentEffect;
-
-		if (parent == null)
+		if (Runtime.CurrentEffect is not { } parent)
 		{
 			throw new InvalidOperationException("Effect must be created inside an effect root");
 		}
@@ -106,7 +105,6 @@ public static class Reactive
 		var root = new Effect([StackTraceHidden] [DebuggerStepThrough]() =>
 			{
 				callback();
-
 				return null;
 			},
 			parent,
@@ -114,6 +112,58 @@ public static class Reactive
 
 		root.Run();
 		return root;
+	}
+
+	/// <summary>
+	/// Creates a function that runs after a delay. If the current reactivity scope is disposed, the timer is cancelled
+	/// and the function will not run.
+	/// </summary>
+	/// <param name="callback">The function to run.</param>
+	/// <param name="milliseconds">How many milliseconds to wait before running the function.</param>
+#pragma warning disable TUnit0031
+	public static async void Timeout(Action callback, int milliseconds)
+#pragma warning restore TUnit0031
+	{
+		try
+		{
+			if (Runtime.CurrentEffect is not { } parent)
+			{
+				throw new InvalidOperationException("Timeout must be created inside an effect root");
+			}
+
+			var token = parent.CancelToken;
+#if SANDBOX
+			await GameTask.Delay(milliseconds, token);
+#else
+			await Task.Delay(milliseconds, token);
+#endif
+			token.ThrowIfCancellationRequested();
+
+			callback();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception e)
+		{
+#if SANDBOX
+			Log.Error
+#else
+			await Console.Error.WriteLineAsync
+#endif
+				($"Exception occurred during timeout: {e}");
+		}
+	}
+
+	/// <summary>
+	/// Creates a function that runs after a delay. If the current reactivity scope is disposed, the timer is cancelled
+	/// and the function will not run.
+	/// </summary>
+	/// <param name="callback">The function to run.</param>
+	/// <param name="duration">How long to wait before running the function.</param>
+	public static void Timeout(Action callback, TimeSpan duration)
+	{
+		Timeout(callback, (int)duration.TotalMilliseconds);
 	}
 
 	/// <inheritdoc cref="Runtime.Flush" />
