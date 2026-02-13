@@ -1,3 +1,6 @@
+#if !SANDBOX
+using System.Threading;
+#endif
 using System.Diagnostics;
 using Sandbox.Reactivity.Internals;
 using Sandbox.Reactivity.Internals.Runtimes;
