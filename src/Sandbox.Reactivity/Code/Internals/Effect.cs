@@ -41,14 +41,16 @@ internal class Effect : IReaction, IDisposable
 	private bool _isDisposed;
 
 	/// <summary>
-	/// The teardown function that was returned in the last run.
+	/// The teardown function that was returned in the last run. This can be non-null before the first run if one was
+	/// specified during instantiation.
 	/// </summary>
 	private Action? _teardown;
 
-	internal Effect(Func<Action?>? fn, Effect? parent, bool shouldTrackDependencies)
+	internal Effect(Func<Action?>? fn, Effect? parent, bool shouldTrackDependencies, Action? overrideTeardown = null)
 	{
 		_fn = fn;
 		_shouldTrackDependencies = shouldTrackDependencies;
+		_teardown = overrideTeardown;
 
 		if (_fn == null)
 		{
@@ -68,13 +70,7 @@ internal class Effect : IReaction, IDisposable
 
 	public void Dispose()
 	{
-		if (_isDisposed)
-		{
-			return;
-		}
-
-		_isDisposed = true;
-		Teardown();
+		Dispose(true);
 	}
 
 	public List<IProducer> Dependencies { get; } = [];
@@ -146,6 +142,27 @@ internal class Effect : IReaction, IDisposable
 
 		ReadVersion = Reactive.Runtime.Version;
 		State = ReactionState.UpToDate;
+	}
+
+	/// <summary>
+	/// Disposes this effect along with any child effects, preventing them from ever running again.
+	/// </summary>
+	/// <param name="performTeardown">
+	/// Whether to run the teardown function for this effect, if any. Child effects always run their teardown functions.
+	/// </param>
+	public void Dispose(bool performTeardown)
+	{
+		if (_isDisposed)
+		{
+			return;
+		}
+
+		_isDisposed = true;
+
+		if (performTeardown)
+		{
+			Teardown();
+		}
 	}
 
 	/// <summary>
