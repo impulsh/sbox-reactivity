@@ -16,9 +16,9 @@ internal class Effect : IReaction, IDisposable
 	private readonly List<Effect> _children = [];
 
 	/// <summary>
-	/// The function to call when this effect runs.
+	/// The function to call when this effect runs, if any.
 	/// </summary>
-	private readonly Func<Action?> _fn;
+	private readonly Func<Action?>? _fn;
 
 	/// <summary>
 	/// Whether this effect will track reads of reactive objects during execution to add as dependencies.
@@ -45,10 +45,18 @@ internal class Effect : IReaction, IDisposable
 	/// </summary>
 	private Action? _teardown;
 
-	internal Effect(Func<Action?> fn, Effect? parent, bool shouldTrackDependencies)
+	internal Effect(Func<Action?>? fn, Effect? parent, bool shouldTrackDependencies)
 	{
-		_shouldTrackDependencies = shouldTrackDependencies;
 		_fn = fn;
+		_shouldTrackDependencies = shouldTrackDependencies;
+
+		if (_fn == null)
+		{
+			// calling Run with no function will not update the state, we'll do it here since no dependencies means it's
+			// always up to date
+			State = ReactionState.UpToDate;
+		}
+
 		parent?._children.Add(this);
 	}
 
@@ -100,6 +108,11 @@ internal class Effect : IReaction, IDisposable
 		}
 
 		Teardown();
+
+		if (_fn == null)
+		{
+			return;
+		}
 
 		var previousEffect = Reactive.Runtime.CurrentEffect;
 		var previousReaction = Reactive.Runtime.CurrentReaction;
