@@ -7,59 +7,60 @@ using JetBrains.Annotations;
 
 namespace Sandbox.Reactivity;
 
+/// <summary>
+/// The reactive counterpart to <see cref="PanelComponent" /> that allows usage of reactive properties.
+/// </summary>
+/// <remarks>
+/// Make sure you set up an effect root using <see cref="PanelRoot" /> at the top of your razor markup:
+/// <code>
+/// @{ using var _ = PanelRoot(); }
+/// </code>
+/// Engine limitations prevent this from being done automatically.
+/// </remarks>
 #if JETBRAINS_ANNOTATIONS
 [PublicAPI]
 #endif
-public class ReactivePanelComponent : PanelComponent, IReactivePropertyContainer
+public class ReactivePanelComponent : PanelComponent, IReactivePropertyContainer, IReactivePanel
 {
-	/// <summary>
-	/// The disposable for this component's effect root that exists while it's enabled.
-	/// </summary>
 	private IDisposable? _effectRoot;
 
-	/// <summary>
-	/// A monotonically increasing counter that's incremented when a reactive property on this component updates its
-	/// current value. Used to trigger a re-render on this panel via the build hash.
-	/// </summary>
+	private Effect? _renderEffectRoot;
+
 	private int _version;
+
+	Effect? IReactivePanel.RenderEffectRoot
+	{
+		get => _renderEffectRoot;
+		set => _renderEffectRoot = value;
+	}
+
+	int IReactivePanel.Version
+	{
+		get => _version;
+		set => _version = value;
+	}
 
 	Dictionary<int, IProducer> IReactivePropertyContainer.Producers { get; } = [];
 
-	// we're starting here instead of OnEnabled since the tree would've already read any properties it's interested in
-	// and created the backing producers
-	protected sealed override void OnTreeFirstBuilt()
+	protected ReactivePanelScope PanelRoot()
 	{
-		_effectRoot?.Dispose();
+		return new ReactivePanelScope(this);
+	}
 
-		var initial = true;
-
-		_effectRoot = EffectRoot(() =>
-		{
-			Effect(() =>
-			{
-				foreach (var producer in ((IReactivePropertyContainer)this).Producers.Values)
-				{
-					producer.TrackRead();
-				}
-
-				if (initial)
-				{
-					initial = false;
-				}
-				else
-				{
-					_version++;
-				}
-			});
-
-			OnActivate();
-		});
+	protected sealed override void OnEnabled()
+	{
+		_effectRoot = EffectRoot(OnActivate);
 	}
 
 	protected sealed override void OnDisabled()
 	{
+		_renderEffectRoot?.Dispose();
+		_renderEffectRoot = null;
+
 		_effectRoot?.Dispose();
 		_effectRoot = null;
+
+		base.OnDisabled();
 	}
 
 	protected sealed override int BuildHash()
