@@ -41,6 +41,7 @@ namespace Sandbox.Reactivity;
 [AttributeUsage(AttributeTargets.Property)]
 #if JETBRAINS_ANNOTATIONS
 [PublicAPI]
+[MeansImplicitUse]
 #endif
 public sealed class DerivedAttribute(string computeMethod) : Attribute
 {
