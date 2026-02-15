@@ -1,33 +1,52 @@
-namespace Sandbox.Reactivity.Internals;
+using Sandbox.Reactivity.Internals;
+#if JETBRAINS_ANNOTATIONS
+using JetBrains.Annotations;
+#endif
+
+namespace Sandbox.Reactivity;
 
 /// <summary>
 /// A reactive object that derives its value from a function. Whenever any reactive values inside the function change,
 /// the function will be re-run to get the new value.
 /// </summary>
 /// <typeparam name="T">The type of value this derived state contains.</typeparam>
-internal sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, IState<T>
+#if JETBRAINS_ANNOTATIONS
+[PublicAPI]
+#endif
+public sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, IState<T>
 {
 	/// <summary>
 	/// The function to call when this derived state needs to recompute its value.
 	/// </summary>
 	private readonly Func<T> _compute;
 
+	private readonly List<IProducer> _dependencies = [];
+
+	private readonly List<IReaction> _reactions = [];
+
+	private bool _isConnectedToEffect;
+
+	private uint _readVersion;
+
+	private ReactionState _state = ReactionState.Stale;
+
 	/// <summary>
 	/// The last computed value.
 	/// </summary>
 	private T _value = default!;
+
+	/// <inheritdoc cref="IProducer.WriteVersion" />
+	/// <remarks>This will not change if this derived state recomputes to the same value.</remarks>
+	private uint _writeVersion;
 
 	internal Derived(Func<T> compute)
 	{
 		_compute = compute;
 	}
 
-	public List<IReaction> Reactions { get; } = [];
+	List<IReaction> IProducer.Reactions => _reactions;
 
-	/// <summary>
-	/// The version at which this derived's value last changed. This won't change if it recomputes to the same value.
-	/// </summary>
-	public uint WriteVersion { get; private set; }
+	uint IProducer.WriteVersion => _writeVersion;
 
 	object? IProducer.NonReactiveValue
 	{
@@ -61,7 +80,7 @@ internal sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction
 				return;
 			}
 
-			if (State == ReactionState.Stale)
+			if (_state == ReactionState.Stale)
 			{
 				// if we're being assigned an overridden value while it's stale, this derived state has either not
 				// computed yet, or is already potentially changing its dependencies due to a reactivity propagation.
@@ -70,82 +89,86 @@ internal sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction
 			}
 
 			_value = value;
-			WriteVersion = ++Reactive.Runtime.Version;
-			State = IsConnectedToEffect ? ReactionState.UpToDate : ReactionState.PossiblyStale;
+			_writeVersion = ++Reactive.Runtime.Version;
+			_state = _isConnectedToEffect ? ReactionState.UpToDate : ReactionState.PossiblyStale;
 
 			this.PropagateReactivity();
 		}
 	}
 
-	public void AddReaction(IReaction reaction)
+	void IProducer.AddReaction(IReaction reaction)
 	{
-		if (!reaction.IsConnectedToEffect || Reactions.Contains(reaction))
+		if (!reaction.IsConnectedToEffect || _reactions.Contains(reaction))
 		{
 			return;
 		}
 
-		Reactions.Add(reaction);
+		_reactions.Add(reaction);
 
-		if (!IsConnectedToEffect)
+		if (!_isConnectedToEffect)
 		{
 			// we're now connected to an effect; re-add this reaction to all of our dependencies
-			IsConnectedToEffect = true;
+			_isConnectedToEffect = true;
 
-			foreach (var dependency in Dependencies)
+			foreach (var dependency in _dependencies)
 			{
 				dependency.AddReaction(this);
 			}
 		}
 	}
 
-	public void RemoveReaction(IReaction reaction)
+	void IProducer.RemoveReaction(IReaction reaction)
 	{
-		if (!Reactions.Remove(reaction))
+		if (!_reactions.Remove(reaction))
 		{
 			return;
 		}
 
-		if (Reactions.Count == 0)
+		if (_reactions.Count == 0)
 		{
 			// this derived state is no longer being used in an effect; remove it from its dependencies to avoid
 			// unnecessary recomputation
-			IsConnectedToEffect = false;
-			State = ReactionState.PossiblyStale;
+			_isConnectedToEffect = false;
+			_state = ReactionState.PossiblyStale;
 
-			foreach (var dependency in Dependencies)
+			foreach (var dependency in _dependencies)
 			{
 				dependency.RemoveReaction(this);
 			}
 		}
 	}
 
-	public List<IProducer> Dependencies { get; } = [];
+	List<IProducer> IReaction.Dependencies => _dependencies;
 
-	public uint ReadVersion { get; private set; }
+	uint IReaction.ReadVersion => _readVersion;
 
-	public ReactionState State { get; set; } = ReactionState.Stale;
+	ReactionState IReaction.State
+	{
+		get => _state;
+		set => _state = value;
+	}
 
-	public bool IsConnectedToEffect { get; private set; }
+	bool IReaction.IsConnectedToEffect => _isConnectedToEffect;
 
 	void IReaction.OnDependencyChanged(ReactionState newState)
 	{
-		if (State < newState)
+		if (_state < newState)
 		{
 			return;
 		}
 
-		State = newState;
+		_state = newState;
 		this.PropagateReactivity(ReactionState.PossiblyStale);
 	}
 
 	void IReaction.Run()
 	{
-		foreach (var dep in Dependencies)
+		foreach (var dep in _dependencies)
 		{
 			dep.RemoveReaction(this);
 		}
 
-		Dependencies.Clear();
+		_dependencies.Clear();
 
 		var previousReaction = Reactive.Runtime.CurrentReaction;
 		Reactive.Runtime.CurrentReaction = this;
@@ -157,14 +180,14 @@ internal sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction
 
 			// we can't know for sure if we're up to date if we're not connected to an effect; we remove ourselves as
 			// reactions to dependencies to avoid recomputation in this case
-			State = IsConnectedToEffect ? ReactionState.UpToDate : ReactionState.PossiblyStale;
+			_state = _isConnectedToEffect ? ReactionState.UpToDate : ReactionState.PossiblyStale;
 
 			if (!EqualityComparer<T>.Default.Equals(oldValue, _value))
 			{
-				WriteVersion = ++Reactive.Runtime.Version;
+				_writeVersion = ++Reactive.Runtime.Version;
 			}
 
-			ReadVersion = Reactive.Runtime.Version;
+			_readVersion = Reactive.Runtime.Version;
 		}
 		finally
 		{

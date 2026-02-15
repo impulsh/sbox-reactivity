@@ -1,28 +1,40 @@
-namespace Sandbox.Reactivity.Internals;
+using Sandbox.Reactivity.Internals;
+#if JETBRAINS_ANNOTATIONS
+using JetBrains.Annotations;
+#endif
+
+namespace Sandbox.Reactivity;
 
 /// <summary>
 /// A reactive object that contains a value that can be changed at any time.
 /// </summary>
 /// <typeparam name="T">The type of value this state contains.</typeparam>
 /// <seealso cref="Reactive.State" />
-internal sealed class State<T> : IProducer<T>, IWritableProducer<T>, IState<T>
+#if JETBRAINS_ANNOTATIONS
+[PublicAPI]
+#endif
+public sealed class State<T> : IProducer<T>, IWritableProducer<T>, IState<T>
 {
+	private readonly List<IReaction> _reactions = [];
+
 	/// <summary>
 	/// The stored value of this state.
 	/// </summary>
 	private T _value;
+
+	private uint _writeVersion;
 
 	internal State(T initialValue)
 	{
 		_value = initialValue;
 	}
 
-	public List<IReaction> Reactions { get; } = [];
+	List<IReaction> IProducer.Reactions => _reactions;
 
 	/// <summary>
 	/// The version at which this state's value last changed.
 	/// </summary>
-	public uint WriteVersion { get; private set; }
+	uint IProducer.WriteVersion => _writeVersion;
 
 	object? IProducer.NonReactiveValue
 	{
@@ -51,7 +63,7 @@ internal sealed class State<T> : IProducer<T>, IWritableProducer<T>, IState<T>
 			}
 
 			_value = value;
-			WriteVersion = ++Reactive.Runtime.Version;
+			_writeVersion = ++Reactive.Runtime.Version;
 
 			this.PropagateReactivity();
 		}
@@ -64,14 +76,14 @@ internal sealed class State<T> : IProducer<T>, IWritableProducer<T>, IState<T>
 			return;
 		}
 
-		if (!Reactions.Contains(reaction))
+		if (!_reactions.Contains(reaction))
 		{
-			Reactions.Add(reaction);
+			_reactions.Add(reaction);
 		}
 	}
 
 	void IProducer.RemoveReaction(IReaction reaction)
 	{
-		Reactions.Remove(reaction);
+		_reactions.Remove(reaction);
 	}
 }

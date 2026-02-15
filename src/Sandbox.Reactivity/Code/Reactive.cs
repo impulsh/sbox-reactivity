@@ -1,10 +1,10 @@
+using System.Diagnostics;
+using Sandbox.Reactivity.Internals;
+using Sandbox.Reactivity.Internals.Runtimes;
 #if !SANDBOX
 using System.Threading;
 using System.Threading.Tasks;
 #endif
-using System.Diagnostics;
-using Sandbox.Reactivity.Internals;
-using Sandbox.Reactivity.Internals.Runtimes;
 #if JETBRAINS_ANNOTATIONS
 using JetBrains.Annotations;
 #endif
@@ -34,7 +34,7 @@ public static class Reactive
 	/// <param name="initialValue">The initial value of the state.</param>
 	/// <typeparam name="T">The type of value this state holds.</typeparam>
 	/// <returns>The created state.</returns>
-	public static IState<T> State<T>(T initialValue)
+	public static State<T> State<T>(T initialValue)
 	{
 		return new State<T>(initialValue);
 	}
@@ -55,7 +55,7 @@ public static class Reactive
 	/// </param>
 	/// <typeparam name="T">The type of value this derived state holds.</typeparam>
 	/// <returns>The created derived state.</returns>
-	public static IState<T> Derived<T>(Func<T> compute)
+	public static Derived<T> Derived<T>(Func<T> compute)
 	{
 		return new Derived<T>(compute);
 	}
