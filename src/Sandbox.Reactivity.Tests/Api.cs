@@ -20,6 +20,15 @@ public class Api
 	}
 
 	[Test]
+	public async Task State_CanBeImplicitlyConverted()
+	{
+		var state = State(0);
+		int converted = state;
+
+		await Assert.That(converted).IsEqualTo(0);
+	}
+
+	[Test]
 	public async Task Derived_IsCreatedFromFactory()
 	{
 		var derived = Derived(() => 0);
@@ -31,5 +40,14 @@ public class Api
 	{
 		var derived = Derived(() => 0);
 		await Assert.That(derived).IsAssignableTo<IState<int>>();
+	}
+
+	[Test]
+	public async Task Derived_CanBeImplicitlyConverted()
+	{
+		var derived = Derived(() => 0);
+		int converted = derived;
+
+		await Assert.That(converted).IsEqualTo(0);
 	}
 }

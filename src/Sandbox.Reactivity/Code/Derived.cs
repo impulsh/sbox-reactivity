@@ -194,4 +194,9 @@ public sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, 
 			Reactive.Runtime.CurrentReaction = previousReaction;
 		}
 	}
+
+	public static implicit operator T(Derived<T> state)
+	{
+		return state.Value;
+	}
 }

@@ -86,4 +86,9 @@ public sealed class State<T> : IProducer<T>, IWritableProducer<T>, IState<T>
 	{
 		_reactions.Remove(reaction);
 	}
+
+	public static implicit operator T(State<T> state)
+	{
+		return state.Value;
+	}
 }
