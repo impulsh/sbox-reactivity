@@ -38,6 +38,12 @@ internal sealed class Runtime : IDisposable
 	/// </summary>
 	public bool IsFlushScheduled { get; private set; }
 
+	/// <summary>
+	/// Whether an effect is currently executing its teardown function. This is used by producers to skip any
+	/// recomputation when accessed to ensure the previous value is returned.
+	/// </summary>
+	public bool IsRunningTeardown { get; set; }
+
 	public void Dispose()
 	{
 		_pendingEffects.Clear();

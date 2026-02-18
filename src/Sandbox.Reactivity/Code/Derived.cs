@@ -63,6 +63,13 @@ public sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, 
 	{
 		get
 		{
+			// always return the stored value inside an effect teardown since the value has been temporarily assigned
+			// something else for the duration of the teardown, and we don't want to recompute to a new value either
+			if (Reactive.Runtime.IsRunningTeardown)
+			{
+				return _value;
+			}
+
 			this.TrackRead();
 
 			// always check here since we could be evaluating outside a tracking context

@@ -204,6 +204,8 @@ internal class Effect : IReaction, IDisposable
 					producer.NonReactiveValue = _capturedValues[i];
 				}
 
+				Reactive.Runtime.IsRunningTeardown = true;
+
 				try
 				{
 					_teardown();
@@ -219,6 +221,8 @@ internal class Effect : IReaction, IDisposable
 					ArrayPool<object?>.Shared.Return(currentValues);
 					_teardown = null;
 					_capturedValues.Clear();
+
+					Reactive.Runtime.IsRunningTeardown = false;
 				}
 			}
 		}

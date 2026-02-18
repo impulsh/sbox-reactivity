@@ -241,7 +241,7 @@ public class Effect
 
 	[Test]
 	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
-	public async Task Teardown_HasPreviouslyReadValue(CreateEffectDelegate createEffect)
+	public async Task Teardown_State_HasPreviouslyReadValue(CreateEffectDelegate createEffect)
 	{
 		var state = State(1);
 		int? valueDuringTeardown = null;
@@ -268,6 +268,84 @@ public class Effect
 		Flush();
 
 		await Assert.That(valueDuringTeardown).IsEqualTo(2);
+	}
+
+	[Test]
+	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
+	public async Task Teardown_Derived_HasPreviouslyReadValue(CreateEffectDelegate createEffect)
+	{
+		var state = State(1);
+		var doubled = Derived(() => state.Value * 2);
+
+		int? valueDuringTeardown = null;
+
+		A.FakeEffect(() =>
+			{
+				_ = doubled.Value;
+
+				return () => valueDuringTeardown = doubled.Value;
+			},
+			out var effect,
+			out _);
+
+		EffectRoot(() => { createEffect(effect); });
+
+		await Assert.That(valueDuringTeardown).IsNull();
+
+		state.Value = 2;
+		Flush();
+
+		await Assert.That(valueDuringTeardown).IsEqualTo(2);
+
+		state.Value = 3;
+		Flush();
+
+		await Assert.That(valueDuringTeardown).IsEqualTo(4);
+	}
+
+	// state ---- doubled ----> effect
+	//        \__ tripled __/
+	[Test]
+	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
+	public async Task Teardown_DiamondDerived_HasPreviouslyReadValue(CreateEffectDelegate createEffect)
+	{
+		var state = State(1);
+		var doubled = Derived(() => state.Value * 2);
+		var tripled = Derived(() => state.Value * 3);
+
+		int? doubledDuringTeardown = null;
+		int? tripledDuringTeardown = null;
+
+		A.FakeEffect(() =>
+			{
+				_ = doubled.Value;
+				_ = tripled.Value;
+
+				return () =>
+				{
+					doubledDuringTeardown = doubled.Value;
+					tripledDuringTeardown = tripled.Value;
+				};
+			},
+			out var effect,
+			out _);
+
+		EffectRoot(() => { createEffect(effect); });
+
+		await Assert.That(doubledDuringTeardown).IsNull();
+		await Assert.That(tripledDuringTeardown).IsNull();
+
+		state.Value = 2;
+		Flush();
+
+		await Assert.That(doubledDuringTeardown).IsEqualTo(2);
+		await Assert.That(tripledDuringTeardown).IsEqualTo(3);
+
+		state.Value = 3;
+		Flush();
+
+		await Assert.That(doubledDuringTeardown).IsEqualTo(4);
+		await Assert.That(tripledDuringTeardown).IsEqualTo(6);
 	}
 
 	[Test]
