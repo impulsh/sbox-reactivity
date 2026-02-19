@@ -5,6 +5,8 @@ using static Sandbox.Reactivity.Reactive;
 
 #pragma warning disable CA1050
 public delegate void CreateEffectDelegate(Func<Action?> callback);
+
+public delegate void UntrackScopeDelegate(Action callback);
 #pragma warning restore CA1050
 
 internal static class DataSources
@@ -14,12 +16,26 @@ internal static class DataSources
 		Effect(() => { Effect(callback); });
 	};
 
+	private static readonly UntrackScopeDelegate UntrackDisposableScopeDelegate = callback =>
+	{
+		using (Untrack())
+		{
+			callback();
+		}
+	};
+
 	// false positive since we return a delegate instead of a Func<T>
 #pragma warning disable TUnit0046
 	public static IEnumerable<TestDataRow<CreateEffectDelegate>> EffectScopes()
 	{
 		yield return new TestDataRow<CreateEffectDelegate>(Effect, "In Root");
 		yield return new TestDataRow<CreateEffectDelegate>(NestedEffectDelegate, "In Nested Effect");
+	}
+
+	public static IEnumerable<TestDataRow<UntrackScopeDelegate>> UntrackScopes()
+	{
+		yield return new TestDataRow<UntrackScopeDelegate>(Untrack, "With Function");
+		yield return new TestDataRow<UntrackScopeDelegate>(UntrackDisposableScopeDelegate, "With Disposable Scope");
 	}
 #pragma warning restore TUnit0046
 }
