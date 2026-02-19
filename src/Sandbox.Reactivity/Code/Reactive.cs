@@ -236,6 +236,70 @@ public static class Reactive
 		Interval(callback, (int)duration.TotalMilliseconds, immediate);
 	}
 
+	/// <summary>
+	/// Creates a function that runs during every game tick (i.e. every fixed update). Game ticks run before frames. If
+	/// the current reactivity scope is disposed, the tick function will no longer run.
+	/// </summary>
+	/// <param name="callback">The function to run.</param>
+	/// <param name="immediate">
+	/// Whether to run the function immediately instead of waiting for the next game tick.
+	/// </param>
+	/// <param name="stage">
+	/// At what point during the game tick the function should run. Defaults to <see cref="TickStage.Start" />
+	/// </param>
+	public static void Tick(Action callback, bool immediate = false, TickStage stage = TickStage.Start)
+	{
+#if SANDBOX
+		Effect(() =>
+		{
+			SandboxRuntimeExecutor.AddTickFunction(stage, callback);
+			return () => { SandboxRuntimeExecutor.RemoveTickFunction(stage, callback); };
+		});
+#else
+		Interval(callback, 33);
+#endif
+
+		if (immediate)
+		{
+			using (new UntrackScope())
+			{
+				callback();
+			}
+		}
+	}
+
+	/// <summary>
+	/// Creates a function that runs during every frame (i.e. every update). Frames run after game ticks. If the current
+	/// reactivity scope is disposed, the frame function will no longer run.
+	/// </summary>
+	/// <param name="callback">The function to run.</param>
+	/// <param name="immediate">
+	/// Whether to run the function immediately instead of waiting for the next frame.
+	/// </param>
+	/// <param name="stage">
+	/// At what point during the frame the function should run. Defaults to <see cref="FrameStage.Start" />
+	/// </param>
+	public static void Frame(Action callback, bool immediate = false, FrameStage stage = FrameStage.Start)
+	{
+#if SANDBOX
+		Effect(() =>
+		{
+			SandboxRuntimeExecutor.AddFrameFunction(stage, callback);
+			return () => { SandboxRuntimeExecutor.RemoveFrameFunction(stage, callback); };
+		});
+#else
+		Interval(callback, 33);
+#endif
+
+		if (immediate)
+		{
+			using (new UntrackScope())
+			{
+				callback();
+			}
+		}
+	}
+
 	/// <inheritdoc cref="Runtime.Flush" />
 	public static void Flush()
 	{
