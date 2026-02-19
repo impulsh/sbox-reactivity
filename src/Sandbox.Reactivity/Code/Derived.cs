@@ -178,7 +178,10 @@ public sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, 
 		_dependencies.Clear();
 
 		var previousReaction = Reactive.Runtime.CurrentReaction;
+		var previousIsUntracking = Reactive.Runtime.IsUntracking;
+
 		Reactive.Runtime.CurrentReaction = this;
+		Reactive.Runtime.IsUntracking = false;
 
 		try
 		{
@@ -199,6 +202,7 @@ public sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, 
 		finally
 		{
 			Reactive.Runtime.CurrentReaction = previousReaction;
+			Reactive.Runtime.IsUntracking = previousIsUntracking;
 		}
 	}
 
