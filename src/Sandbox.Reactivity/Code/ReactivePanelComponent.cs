@@ -42,6 +42,42 @@ public class ReactivePanelComponent : PanelComponent, IReactivePropertyContainer
 
 	Dictionary<int, IProducer> IReactivePropertyContainer.Producers { get; } = [];
 
+	/// <inheritdoc cref="GameObjectExtensions.SendDirect" />
+	public void SendDirect<T>(T eventData)
+	{
+		GameObject?.SendDirect(eventData);
+	}
+
+	/// <inheritdoc cref="GameObjectExtensions.SendUp" />
+	public void SendUp<T>(T eventData)
+	{
+		GameObject?.SendUp(eventData);
+	}
+
+	/// <inheritdoc cref="GameObjectExtensions.SendDown" />
+	public void SendDown<T>(T eventData)
+	{
+		GameObject?.SendDown(eventData);
+	}
+
+	/// <inheritdoc cref="ReactiveComponent.OnEvent" />
+	public void OnEvent<T>(Func<T, bool> callback)
+	{
+		if (GameObject is not { } go)
+		{
+			return;
+		}
+
+		var manager = GameObjectEventManager.GetOrCreate(go);
+
+		Effect(() =>
+		{
+			manager.Add(callback);
+
+			return () => { manager.Remove(callback); };
+		});
+	}
+
 	protected ReactivePanelScope PanelRoot()
 	{
 		_renderEffectRoot?.Dispose();
