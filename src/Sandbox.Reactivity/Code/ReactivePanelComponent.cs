@@ -44,6 +44,9 @@ public class ReactivePanelComponent : PanelComponent, IReactivePropertyContainer
 
 	protected ReactivePanelScope PanelRoot()
 	{
+		_renderEffectRoot?.Dispose();
+		_renderEffectRoot = null;
+
 		return new ReactivePanelScope(this);
 	}
 
