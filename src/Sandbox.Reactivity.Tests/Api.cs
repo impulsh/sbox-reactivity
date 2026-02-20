@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using static Sandbox.Reactivity.Reactive;
 
 namespace Sandbox.Reactivity.Tests;
 
+[SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
 public class Api
 {
 	[Test]
@@ -29,6 +31,13 @@ public class Api
 	}
 
 	[Test]
+	public async Task State_CanBeReadOnly()
+	{
+		IReadOnlyState<int> state = State(0);
+		await Assert.That(state.Value).IsEqualTo(0);
+	}
+
+	[Test]
 	public async Task Derived_IsCreatedFromFactory()
 	{
 		var derived = Derived(() => 0);
@@ -49,5 +58,12 @@ public class Api
 		int converted = derived;
 
 		await Assert.That(converted).IsEqualTo(0);
+	}
+
+	[Test]
+	public async Task Derived_CanBeReadOnly()
+	{
+		IReadOnlyState<int> derived = Derived(() => 0);
+		await Assert.That(derived.Value).IsEqualTo(0);
 	}
 }

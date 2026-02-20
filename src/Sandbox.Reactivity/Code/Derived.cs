@@ -13,7 +13,7 @@ namespace Sandbox.Reactivity;
 #if JETBRAINS_ANNOTATIONS
 [PublicAPI]
 #endif
-public sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, IState<T>
+public sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, IState<T>, IReadOnlyState<T>
 {
 	/// <summary>
 	/// The function to call when this derived state needs to recompute its value.

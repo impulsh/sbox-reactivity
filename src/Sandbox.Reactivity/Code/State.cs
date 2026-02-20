@@ -13,7 +13,7 @@ namespace Sandbox.Reactivity;
 #if JETBRAINS_ANNOTATIONS
 [PublicAPI]
 #endif
-public sealed class State<T> : IProducer<T>, IWritableProducer<T>, IState<T>
+public sealed class State<T> : IProducer<T>, IWritableProducer<T>, IState<T>, IReadOnlyState<T>
 {
 	private readonly List<IReaction> _reactions = [];
 

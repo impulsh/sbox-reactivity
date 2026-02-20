@@ -22,3 +22,13 @@ public interface IState<T>
 	/// </summary>
 	T Value { get; set; }
 }
+
+/// <inheritdoc cref="IState{T}" />
+#if JETBRAINS_ANNOTATIONS
+[PublicAPI]
+#endif
+public interface IReadOnlyState<out T>
+{
+	/// <inheritdoc cref="IState{T}.Value" />
+	T Value { get; }
+}
