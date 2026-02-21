@@ -17,7 +17,7 @@ namespace Sandbox.Reactivity;
 #if JETBRAINS_ANNOTATIONS
 [PublicAPI]
 #endif
-public static class Reactive
+public static partial class Reactive
 {
 #if SANDBOX
 	internal static readonly Runtime Runtime = new();

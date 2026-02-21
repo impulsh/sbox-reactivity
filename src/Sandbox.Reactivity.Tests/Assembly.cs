@@ -91,5 +91,28 @@ internal static class FakeExtensions
 			effect = fakeEffect;
 			teardown = fakeTeardown;
 		}
+
+		public static CollectionEachDelegate<T> FakeEach<T>(out List<(T Value, Action Dispose)> calls)
+		{
+			var fakeCallback = A.Fake<CollectionEachDelegate<T>>();
+			var fakeCalls = new List<(T Value, Action Dispose)>();
+
+			A.CallTo(() => fakeCallback(A<T>._, A<int>._))
+				.ReturnsLazily(x =>
+				{
+					var dispose = A.Fake<Action>();
+					fakeCalls.Add((x.GetArgument<T>(0), dispose)!);
+
+					return dispose;
+				});
+
+			calls = fakeCalls;
+			return fakeCallback;
+		}
+
+		public static CollectionEachDelegate<T> FakeEach<T>()
+		{
+			return A.FakeEach<T>(out _);
+		}
 	}
 }
