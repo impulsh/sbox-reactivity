@@ -66,4 +66,11 @@ public class Api
 		IReadOnlyState<int> derived = Derived(() => 0);
 		await Assert.That(derived.Value).IsEqualTo(0);
 	}
+
+	[Test]
+	public async Task CancelToken_ReturnsDefaultOutsideOfEffect()
+	{
+		var token = GetEffectCancelToken();
+		await Assert.That(token).IsDefault().And.CannotBeCanceled();
+	}
 }

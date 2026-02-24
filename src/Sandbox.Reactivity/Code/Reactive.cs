@@ -1,10 +1,10 @@
-using System.Diagnostics;
-using Sandbox.Reactivity.Internals;
-using Sandbox.Reactivity.Internals.Runtimes;
 #if !SANDBOX
-using System.Threading;
 using System.Threading.Tasks;
 #endif
+using System.Diagnostics;
+using System.Threading;
+using Sandbox.Reactivity.Internals;
+using Sandbox.Reactivity.Internals.Runtimes;
 #if JETBRAINS_ANNOTATIONS
 using JetBrains.Annotations;
 #endif
@@ -356,5 +356,14 @@ public static partial class Reactive
 	public static bool IsTracking()
 	{
 		return Runtime is { IsUntracking: false, CurrentEffect: { } };
+	}
+
+	/// <summary>
+	/// Returns a cancellation token for the currently executing effect. If there's no current effect,
+	/// <see cref="CancellationToken.None" /> will be returned instead.
+	/// </summary>
+	public static CancellationToken GetEffectCancelToken()
+	{
+		return Runtime.CurrentEffect is { CancelToken: var cancelToken } ? cancelToken : CancellationToken.None;
 	}
 }

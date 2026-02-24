@@ -26,7 +26,7 @@ public class MyComponent : ReactiveComponent
 
 			// Tint the model whenever it changes
 			Effect(() => model.Tint = TintColor);
-			
+
 			// Spin the object every frame while the component is enabled
 			Frame(() =>
 			{
@@ -182,14 +182,14 @@ Effect(() =>
 	if (shouldCreateObject.Value)
 	{
 		var go = new GameObject();
-		
+
 		return () =>
 		{
 			Log.Info($"Changing from {shouldCreateObject.Value}");
 			go.Destroy();
 		};
 	}
-	
+
 	// No teardown here since we didn't create the object
 	return null;
 });
@@ -215,17 +215,17 @@ Effect(() =>
 	{
 		return null;
 	}
-	
+
 	var go = new GameObject();
 	var light = go.AddComponent<PointLight>();
-	
+
 	Effect(() =>
 	{
 		// Changing the light color inside an effect means that the game
 		// object won't be re-created every time the color changes
 		light.Color = lightColor.Value;
 	});
-	
+
 	return () => go.Destroy();
 });
 // A game object with a white light is created
@@ -252,17 +252,17 @@ var otherCount = State(1);
 Effect(() =>
 {
 	Log.Info($"Count is {count.Value}");
-	
+
 	using (Untrack())
 	{
 		// Anything inside this scope will not become a dependency if read
 		Log.Info($"Other count is {otherCount.Value}");
 	}
-	
+
 	// Or you can give it a function to call without reactivity tracking, and return the result
 	var other = Untrack(() => otherCount.Value);
 	Log.Info($"Other count is {other}");
-	
+
 	// This effect only has a dependency on `count`
 });
 // Effect runs with output: Count is 1, Other count is 1
@@ -306,6 +306,49 @@ Flush();
 > [!NOTE]
 > Some examples in this document would require a `Flush` call to actually execute in order, but were omitted for brevity.
 
+### Async Cancellation
+
+While effects are synchronous, you can still call async code within them like you would anywhere else by discarding the returned task. If your async code should only run while an effect's reactivity scope exists (i.e. while the effect hasn't been disposed), you can use the `GetEffectCancelToken` method to cancel your task.
+
+This returns a cancellation token that will be cancelled when the currently executing effect is about to re-run or be disposed. When called outside of an executing effect, it will return a default cancellation token that will never cancel.
+
+```csharp
+var count = State(3);
+
+async Task MyAsyncTask(int total, CancellationToken token)
+{
+	// Perform an async task like sending an HTTP request, or do
+	// things that would be more tedious to achieve with the timer
+	// methods like running some code X times every Y seconds, etc.
+	for (var i = 0; i < total; i++)
+	{
+		await Task.Delay(1000, token);
+		Log.Info($"hello world {i + 1}/{total}");
+	}
+}
+
+Effect(() =>
+{
+	var token = GetEffectCancelToken();
+	_ = MyAsyncTask(count.Value, token);
+});
+
+// Effect runs and starts the async task
+// ...one second later
+// Effect runs with output: hello world 1/3
+
+count.Value = 2;
+// The running async task is cancelled
+// Effect runs again and starts a new async task
+// ...one second later
+// Effect runs with output: hello world 1/2
+// ...one second later
+// Effect runs with output: hello world 2/2
+```
+
+> [!IMPORTANT]
+> You should avoid reading reactive values (or any mutable data for that matter) in async code. Always prefer copying the needed data - usually by passing a value as a parameter - to your async function. This helps to avoid nasty bugs that can occur when the data is changed between `await` calls.
+
 ## Effect Roots
 
 All effects *must* be created inside of a reactivity scope. This is a "grouping" of reactive code that can be disposed of when it's no longer needed. If you're not using a [reactive component](#reactive-components), you can create a root reactivity scope with `EffectRoot` instead.
@@ -345,13 +388,13 @@ public class MyComponent : ReactiveComponent
 {
 	[Reactive]
 	public string MyProperty { get; set; } = "hello";
-	
+
 	protected override void OnActivate()
 	{
 		Effect(() =>
 		{
 			Log.Info($"Property value is {MyProperty}");
-			
+
 			return () =>
 			{
 				// This will run just before MyProperty changes, or when the component is about to be disabled
@@ -369,15 +412,15 @@ public class MyComponent : ReactiveComponent
 {
 	[Reactive]
 	public int Count { get; set; } = 1;
-	
+
 	[Reactive, Derived(nameof(_doubled))]
 	public int Doubled { get; } = 1;
-	
+
 	private int _doubled()
 	{
 		return Count * 2;
 	}
-	
+
 	protected override void OnActivate()
 	{
 		Effect(() =>
@@ -454,7 +497,7 @@ public class MyComponent : ReactiveComponent
 {
 	[Reactive]
 	public bool ShouldRun { get; set; } = true;
-	
+
 	protected override void OnActivate()
 	{
 		Effect(() =>
@@ -463,7 +506,7 @@ public class MyComponent : ReactiveComponent
 			{
 				return;
 			}
-			
+
 			Tick(() =>
 			{
 				// ...do something every fixed update
@@ -484,7 +527,7 @@ public class MyComponent : ReactiveComponent
 {
 	[Reactive]
 	public bool ShouldRun { get; set; } = true;
-	
+
 	protected override void OnActivate()
 	{
 		Effect(() =>
@@ -493,7 +536,7 @@ public class MyComponent : ReactiveComponent
 			{
 				return;
 			}
-			
+
 			Frame(() =>
 			{
 				// ...do something every update
@@ -519,10 +562,10 @@ public class MyComponent : ReactiveComponent
 {
 	[Reactive]
 	public Color Tint { get; set; } = Color.Blue;
-	
+
 	[Reactive]
 	public Model[] Models { get; set; } = [Model.Cube, Model.Sphere];
-	
+
 	protected override void OnActivate()
 	{
 		// Creates a game object for each model in the array
@@ -532,13 +575,13 @@ public class MyComponent : ReactiveComponent
 			{
 				var go = new GameObject();
 				go.LocalPosition = new Vector3(i * 50f, 0, 0);
-				
+
 				var renderer = go.AddComponent<ModelRenderer>();
 				renderer.Model = model;
-				
+
 				// Update the model's tint every time it's changed
 				Effect(() => renderer.Tint = Tint);
-				
+
 				// Destroy the game object if this index changes
 				return () => go.Destroy();
 			}
@@ -577,18 +620,17 @@ Scene events are plain objects that a reactive component can receive and do some
 [Reactive components](#reactive-components) can opt into receiving events that their owning game object is given with the `OnEvent` method. Like everything else, event functions are tied to the current reactivity scope. If the owning component is disabled or a parent effect is disposed, the event function will not run even if the game object receives an event that the component is interested in.
 
 ```csharp
-
 public class MyComponent : ReactiveComponent
 {
 	// Define a simple type that can be used as a scene event
 	public record PrintEvent(string Message);
-	
+
 	[Reactive]
 	public Color Tint { get; set; } = Color.Blue;
-	
+
 	[Reactive]
 	public Model[] Models { get; set; } = [Model.Cube, Model.Sphere];
-	
+
 	protected override void OnActivate()
 	{
 		// Run some code whenever this event is received while the component is active

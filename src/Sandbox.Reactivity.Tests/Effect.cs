@@ -1,5 +1,7 @@
+using System.Threading;
 using System.Threading.Tasks;
 using FakeItEasy;
+using TUnit.Core.Executors;
 using static Sandbox.Reactivity.Reactive;
 
 namespace Sandbox.Reactivity.Tests;
@@ -35,6 +37,23 @@ public class Effect
 		root.Dispose();
 		A.CallTo(effect).MustHaveHappenedOnceExactly();
 		A.CallTo(teardown).MustHaveHappenedOnceExactly();
+	}
+
+	[Test]
+	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
+	public async Task PerformsCancellationWhenDisposing(CreateEffectDelegate createEffect)
+	{
+		var token = CancellationToken.None;
+
+		A.FakeEffect(() => { token = GetEffectCancelToken(); }, out var effect);
+		var root = EffectRoot(() => { createEffect(effect); });
+
+		await Assert.That(token).IsNotDefault().And.CanBeCanceled().And.IsNotCancellationRequested();
+
+		using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+		root.Dispose();
+
+		await Assert.That(cts.Token).IsCancellationRequested();
 	}
 
 	[Test]
@@ -144,6 +163,126 @@ public class Effect
 
 		A.CallTo(childEffect).MustHaveHappenedTwiceExactly();
 		A.CallTo(childTeardown).MustHaveHappenedOnceExactly();
+	}
+
+	[Test]
+	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
+	public async Task Run_PerformsCancellation(CreateEffectDelegate createEffect)
+	{
+		var state = State(1);
+		var token = CancellationToken.None;
+
+		A.FakeEffect(() =>
+			{
+				token = GetEffectCancelToken();
+				_ = state.Value;
+			},
+			out var effect);
+		EffectRoot(() => { createEffect(effect); });
+
+		A.CallTo(effect).MustHaveHappenedOnceExactly();
+		await Assert.That(token).IsNotDefault().And.CanBeCanceled().And.IsNotCancellationRequested();
+
+		using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+		state.Value = 2;
+		Flush();
+
+		A.CallTo(effect).MustHaveHappenedTwiceExactly();
+		await Assert.That(cts.Token).IsCancellationRequested();
+	}
+
+	[Test]
+	[TestExecutor<DedicatedThreadExecutor>]
+	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
+	public async Task Run_TracksDependenciesUpToFirstSuspension(CreateEffectDelegate createEffect)
+	{
+		var callback = A.Fake<Action<int>>();
+		var cancellations = 0;
+		var completions = 0;
+		var count = State(3);
+
+		async Task TestAsyncMethod(CancellationToken token)
+		{
+			try
+			{
+				// we intentionally read directly from the reactive state instead of passing its value as a
+				// parameter to test for the cancellation being requested early enough
+				for (var i = 0; i < count.Value; i++)
+				{
+					await Task.Yield();
+					token.ThrowIfCancellationRequested();
+
+					callback(i);
+				}
+
+				completions++;
+			}
+			catch
+			{
+				cancellations++;
+			}
+		}
+
+		EffectRoot(() =>
+		{
+			createEffect(() =>
+			{
+				var token = GetEffectCancelToken();
+				_ = TestAsyncMethod(token);
+
+				return null;
+			});
+		});
+
+		await Assert.That(cancellations).IsZero();
+		await Assert.That(completions).IsZero();
+		A.CallTo(callback).MustNotHaveHappened();
+
+		await Task.Yield();
+
+		await Assert.That(cancellations).IsZero();
+		await Assert.That(completions).IsZero();
+		A.CallTo(callback).MustHaveHappenedOnceExactly();
+		A.CallTo(() => callback(0)).MustHaveHappenedOnceExactly();
+
+		// pre-flush continuation
+		count.Value = 2;
+		await Task.Yield();
+
+		await Assert.That(cancellations).IsEqualTo(1);
+		await Assert.That(completions).IsZero();
+		A.CallTo(callback).MustHaveHappenedOnceExactly();
+		A.CallTo(() => callback(0)).MustHaveHappenedOnceExactly();
+
+		Flush();
+		await Task.Yield();
+
+		await Assert.That(cancellations).IsEqualTo(1);
+		await Assert.That(completions).IsZero();
+		A.CallTo(callback).MustHaveHappenedTwiceExactly();
+		A.CallTo(() => callback(0)).MustHaveHappened().Then(A.CallTo(() => callback(0)).MustHaveHappened());
+
+		await Task.Yield();
+
+		await Assert.That(cancellations).IsEqualTo(1);
+		await Assert.That(completions).IsEqualTo(1);
+		A.CallTo(callback).MustHaveHappened(3, Times.Exactly);
+		A.CallTo(() => callback(0))
+			.MustHaveHappened()
+			.Then(A.CallTo(() => callback(0)).MustHaveHappened())
+			.Then(A.CallTo(() => callback(1)).MustHaveHappened());
+
+		// one last time to make sure nothing happens
+		await Task.Yield();
+
+		await Assert.That(cancellations).IsEqualTo(1);
+		await Assert.That(completions).IsEqualTo(1);
+		A.CallTo(callback).MustHaveHappened(3, Times.Exactly);
+		A.CallTo(() => callback(0))
+			.MustHaveHappened()
+			.Then(A.CallTo(() => callback(0)).MustHaveHappened())
+			.Then(A.CallTo(() => callback(1)).MustHaveHappened());
 	}
 
 	[Test]

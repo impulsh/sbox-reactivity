@@ -89,6 +89,17 @@ internal class Effect : IReaction, IDisposable
 			return;
 		}
 
+		// cancel any async code that started in this effect immediately instead of waiting for it to flush. if an async
+		// function resumes execution between the time a dependency changed and this effect ran its teardown function,
+		// it would end up reading the updated value before being cancelled. proper async code shouldn't really read any
+		// data that could mutate during its execution anyway, but we'll try to account for it here
+		if (_cancelSource != null)
+		{
+			_cancelSource.Cancel();
+			_cancelSource.Dispose();
+			_cancelSource = null;
+		}
+
 		State = newState;
 		Reactive.Runtime.ScheduleEffect(this);
 	}
@@ -171,6 +182,14 @@ internal class Effect : IReaction, IDisposable
 	/// </summary>
 	private void Teardown()
 	{
+		// perform cancellation
+		if (_cancelSource != null)
+		{
+			_cancelSource.Cancel();
+			_cancelSource.Dispose();
+			_cancelSource = null;
+		}
+
 		// clear any child effects
 		if (_children.Count > 0)
 		{
@@ -236,14 +255,6 @@ internal class Effect : IReaction, IDisposable
 			}
 
 			Dependencies.Clear();
-		}
-
-		// perform cancellation
-		if (_cancelSource != null)
-		{
-			_cancelSource.Cancel();
-			_cancelSource.Dispose();
-			_cancelSource = null;
 		}
 	}
 }
