@@ -20,46 +20,86 @@ internal interface IReactivePropertyContainer
 public static class ReactivePropertyContainer
 {
 	/// <summary>
-	/// Checks whether the backing producer for a property should be a <see cref="Derived{T}" /> based on its attributes.
+	/// The dictionary of static reactive property member IDs to their backing producers.
 	/// </summary>
-	/// <param name="container">The object that contains a producer dictionary.</param>
-	/// <param name="memberIdent">The ID of the object to check.</param>
-	/// <param name="derivedComputeMethod">
-	/// The method to call on the object if a <see cref="Derived{T}" /> should be created,
-	/// or <c>null</c> if a <see cref="State{T}" /> should be created.
-	/// </param>
-	/// <exception cref="InvalidOperationException">Thrown if the property could not be found</exception>
-	private static void CheckShouldCreateDerived(
-		IReactivePropertyContainer container,
-		int memberIdent,
-		out MethodDescription? derivedComputeMethod
-	)
+	private static readonly Dictionary<int, IProducer> StaticsContainer = new();
+
+	/// <summary>
+	/// Returns an <see cref="IProducer" /> for the given member and target, or creates one if it doesn't exist. What
+	/// kind of producer depends on the attributes that are on the member.
+	/// </summary>
+	/// <param name="memberIdent">The unique ID of the member.</param>
+	/// <param name="target">The object to store the producer object on. This can be null for static members.</param>
+	/// <param name="defaultValue">The default value to use when creating a producer.</param>
+	/// <typeparam name="T">The return type of the member.</typeparam>
+	/// <typeparam name="TProducer">The type to cast the producer to.</typeparam>
+	/// <returns>
+	/// An <see cref="IProducer" /> that can be used as a backing reactive object for the given member and target.
+	/// </returns>
+	/// <exception cref="InvalidOperationException">
+	/// Thrown if <paramref name="target" /> is an object that doesn't implement
+	/// <see cref="IReactivePropertyContainer" />.
+	/// </exception>
+	private static TProducer GetOrCreateProducer<T, TProducer>(int memberIdent, object? target, T defaultValue)
+		where TProducer : IProducer
 	{
-		if (!TypeLibrary.TryGetType(container.GetType(), out var description))
+		// find existing producer if possible
+		var states = target switch
 		{
-			throw new InvalidOperationException($"Could not find type for {container.GetType().Name}");
+			// static property
+			null => StaticsContainer,
+			// instance property
+			IReactivePropertyContainer container => container.Producers,
+			// instance property that doesnt implement IReactivePropertyContainer; nowhere to put the producer objects
+			_ => throw new InvalidOperationException(
+				$"Reactive property defined on unsupported type {target.GetType()}"),
+		};
+
+		if (states.TryGetValue(memberIdent, out var state))
+		{
+			return (TProducer)state;
 		}
 
+		// none exists, time to make one
 		if (TypeLibrary.GetMemberByIdent(memberIdent) is not PropertyDescription property)
 		{
-			throw new InvalidOperationException(
-				$"Could not find member identity {memberIdent} on type {description.Name}");
+			throw new InvalidOperationException($"Could not find member with identity {memberIdent}");
 		}
 
+		var containingType = property.TypeDescription;
+
+		if (property.IsStatic && containingType.IsGenericType)
+		{
+			throw new InvalidOperationException(
+				$"Static reactive properties on generic type {containingType.FullName} are not supported");
+		}
+
+		IProducer producer;
+
+		// check if we need to create a derived state and wire up the computation method
 		if (property.GetCustomAttribute<DerivedAttribute>() is { ComputeMethod: { } computeMethodName })
 		{
-			if (description.GetMethod(computeMethodName) is not { } method)
+			var method = target switch
+			{
+				null => containingType.GetStaticMethod(computeMethodName),
+				_ => containingType.GetMethod(computeMethodName),
+			};
+
+			if (method == null)
 			{
 				throw new InvalidOperationException(
-					$"Could not find derived compute method {computeMethodName} on type {description.Name}");
+					$"Could not find derived compute method {computeMethodName} on {containingType.Name}.{property.Name}");
 			}
 
-			derivedComputeMethod = method;
+			producer = new Derived<T>(method.CreateDelegate<Func<T>>(target));
 		}
 		else
 		{
-			derivedComputeMethod = null;
+			producer = new State<T>(defaultValue);
 		}
+
+		states.Add(memberIdent, producer);
+		return (TProducer)producer;
 	}
 
 	/// <summary>
@@ -69,37 +109,14 @@ public static class ReactivePropertyContainer
 	/// <typeparam name="T">The type of property being accessed.</typeparam>
 	/// <returns>The value of the backing producer.</returns>
 	/// <exception cref="InvalidOperationException">
-	/// Thrown if the object does not implement
-	/// <see cref="IReactivePropertyContainer" />
+	/// Thrown if the object does not implement <see cref="IReactivePropertyContainer" />.
 	/// </exception>
 #if JETBRAINS_ANNOTATIONS
 	[UsedImplicitly]
 #endif
 	public static T GetReactiveValue<T>(in WrappedPropertyGet<T> wrapped)
 	{
-		if (wrapped.Object is not IReactivePropertyContainer { Producers: var states } container)
-		{
-			throw new InvalidOperationException("Reactive property defined on unsupported type");
-		}
-
-		if (states.TryGetValue(wrapped.MemberIdent, out var state))
-		{
-			return ((IProducer<T>)state).Value;
-		}
-
-		IProducer<T> producer;
-		CheckShouldCreateDerived(container, wrapped.MemberIdent, out var derivedComputeMethod);
-
-		if (derivedComputeMethod != null)
-		{
-			producer = new Derived<T>(derivedComputeMethod.CreateDelegate<Func<T>>(container));
-		}
-		else
-		{
-			producer = new State<T>(wrapped.Value);
-		}
-
-		states.Add(wrapped.MemberIdent, producer);
+		var producer = GetOrCreateProducer<T, IProducer<T>>(wrapped.MemberIdent, wrapped.Object, wrapped.Value);
 		return producer.Value;
 	}
 
@@ -117,30 +134,7 @@ public static class ReactivePropertyContainer
 #endif
 	public static void SetReactiveValue<T>(in WrappedPropertySet<T> wrapped)
 	{
-		if (wrapped.Object is not IReactivePropertyContainer { Producers: var states } container)
-		{
-			throw new InvalidOperationException("Reactive property defined on unsupported type");
-		}
-
-		if (states.TryGetValue(wrapped.MemberIdent, out var state))
-		{
-			((IWritableProducer<T>)state).Value = wrapped.Value;
-			return;
-		}
-
-		IWritableProducer<T> producer;
-		CheckShouldCreateDerived(container, wrapped.MemberIdent, out var derivedComputeMethod);
-
-		if (derivedComputeMethod != null)
-		{
-			producer = new Derived<T>(derivedComputeMethod.CreateDelegate<Func<T>>(container));
-		}
-		else
-		{
-			producer = new State<T>(wrapped.Value);
-		}
-
-		states.Add(wrapped.MemberIdent, producer);
+		var producer = GetOrCreateProducer<T, IWritableProducer<T>>(wrapped.MemberIdent, wrapped.Object, wrapped.Value);
 		producer.Value = wrapped.Value;
 	}
 }

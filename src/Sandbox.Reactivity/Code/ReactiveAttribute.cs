@@ -18,10 +18,10 @@ namespace Sandbox.Reactivity;
 /// }
 /// </code>
 /// </example>
-[CodeGenerator(CodeGeneratorFlags.WrapPropertyGet | CodeGeneratorFlags.Instance,
+[CodeGenerator(CodeGeneratorFlags.WrapPropertyGet | CodeGeneratorFlags.Instance | CodeGeneratorFlags.Static,
 	"Sandbox.Reactivity.Internals.ReactivePropertyContainer.GetReactiveValue",
 	100)]
-[CodeGenerator(CodeGeneratorFlags.WrapPropertySet | CodeGeneratorFlags.Instance,
+[CodeGenerator(CodeGeneratorFlags.WrapPropertySet | CodeGeneratorFlags.Instance | CodeGeneratorFlags.Static,
 	"Sandbox.Reactivity.Internals.ReactivePropertyContainer.SetReactiveValue",
 	100)]
 [AttributeUsage(AttributeTargets.Property)]

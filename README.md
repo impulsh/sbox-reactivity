@@ -434,6 +434,30 @@ public class MyComponent : ReactiveComponent
 > [!NOTE]
 > You can replace the example usages of the `State` and `Derived` methods in this document with a corresponding reactive property; they'll work the same.
 
+#### Static Properties
+
+Using the same reactivity attributes on static properties works as you'd expect.
+
+```csharp
+public static class MySingleton
+{
+	[Reactive]
+	public static int Count { get; set; } = 1;
+	
+	[Reactive]
+	[Derived(nameof(_isEven))]
+	public static bool IsEven { get; }
+	
+	private static bool _isEven()
+	{
+		return Count % 2 == 0;
+	}
+}
+```
+
+> [!NOTE]
+> Static reactive properties on generic types are not currently supported. In these cases, you can create a `State` or `Derived` backing field and corresponding property accessors.
+
 ## Timers
 
 It's likely you'll want to call some code after a delay, or at regular intervals. There are various timer methods that can help you accomplish this.
