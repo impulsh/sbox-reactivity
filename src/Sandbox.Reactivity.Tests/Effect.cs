@@ -57,6 +57,33 @@ public class Effect
 	}
 
 	[Test]
+	[Timeout(2000)]
+	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
+	public async Task InfiniteLoopThrows(CreateEffectDelegate createEffect, CancellationToken token)
+	{
+		var state = State(1);
+
+		A.FakeEffect(() =>
+			{
+				if (token.IsCancellationRequested)
+				{
+					return;
+				}
+
+				state.Value++;
+			},
+			out var effect);
+
+		await Assert.That(() =>
+			{
+				EffectRoot(() => { createEffect(effect); });
+				Flush();
+			})
+			.ThrowsException();
+		A.CallTo(effect).MustHaveHappened(1000, Times.OrMore);
+	}
+
+	[Test]
 	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
 	public void Run_OccursWhenStateChanges(CreateEffectDelegate createEffect)
 	{

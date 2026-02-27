@@ -8,6 +8,11 @@ internal sealed class Runtime : IDisposable
 	private readonly Queue<Effect> _pendingEffects = new(16);
 
 	/// <summary>
+	/// How many effects have run during a flush operation.
+	/// </summary>
+	private uint _flushDepth;
+
+	/// <summary>
 	/// Whether pending effects are currently being run.
 	/// </summary>
 	private bool _isFlushing;
@@ -83,6 +88,14 @@ internal sealed class Runtime : IDisposable
 		{
 			while (_pendingEffects.TryDequeue(out var effect))
 			{
+				if (_flushDepth++ > 1000)
+				{
+					_pendingEffects.Clear();
+					_pendingEffects.TrimExcess(16);
+
+					throw new InvalidOperationException("Infinite loop detected");
+				}
+
 				if (effect.ShouldRun)
 				{
 					effect.Run();
@@ -91,6 +104,7 @@ internal sealed class Runtime : IDisposable
 		}
 		finally
 		{
+			_flushDepth = 0;
 			_isFlushing = false;
 		}
 	}
