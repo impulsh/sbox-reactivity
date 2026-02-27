@@ -129,6 +129,10 @@ internal class Effect : IReaction, IDisposable
 		Reactive.Runtime.CurrentReaction = _shouldTrackDependencies ? this : null;
 		Reactive.Runtime.IsUntracking = !_shouldTrackDependencies;
 
+		// mark as up to date before running so that any dependency changes that occur during execution will properly
+		// schedule this effect to run at the end of the current flush operation
+		State = ReactionState.UpToDate;
+
 		try
 		{
 			_teardown = _fn();
@@ -152,7 +156,6 @@ internal class Effect : IReaction, IDisposable
 		}
 
 		ReadVersion = Reactive.Runtime.Version;
-		State = ReactionState.UpToDate;
 	}
 
 	/// <summary>

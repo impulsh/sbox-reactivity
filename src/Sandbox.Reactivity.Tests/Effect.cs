@@ -93,6 +93,57 @@ public class Effect
 
 	[Test]
 	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
+	public async Task Run_OccursWhenMutatingStateInEffect(CreateEffectDelegate createEffect)
+	{
+		var state = State(1);
+
+		A.FakeEffect(() =>
+			{
+				if (state.Value >= 2)
+				{
+					state.Value = 0;
+				}
+			},
+			out var effect);
+		EffectRoot(() => { createEffect(effect); });
+
+		A.CallTo(effect).MustHaveHappenedOnceExactly();
+
+		state.Value = 2;
+		Flush();
+
+		await Assert.That(state.Value).IsZero();
+		A.CallTo(effect).MustHaveHappened(3, Times.Exactly);
+	}
+
+	[Test]
+	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
+	public async Task Run_OccursWhenMutatingDerivedInEffect(CreateEffectDelegate createEffect)
+	{
+		var state = State(1);
+		var doubled = Derived(() => state.Value * 2);
+
+		A.FakeEffect(() =>
+			{
+				if (doubled.Value >= 4)
+				{
+					state.Value = 0;
+				}
+			},
+			out var effect);
+		EffectRoot(() => { createEffect(effect); });
+
+		A.CallTo(effect).MustHaveHappenedOnceExactly();
+
+		state.Value = 2;
+		Flush();
+
+		await Assert.That(doubled.Value).IsZero();
+		A.CallTo(effect).MustHaveHappened(3, Times.Exactly);
+	}
+
+	[Test]
+	[MethodDataSource(typeof(DataSources), nameof(DataSources.EffectScopes))]
 	public void Run_BatchesDependencyChanges(CreateEffectDelegate createEffect)
 	{
 		var state1 = State(1);
