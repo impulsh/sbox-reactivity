@@ -16,12 +16,51 @@ namespace Sandbox.Reactivity;
 #if JETBRAINS_ANNOTATIONS
 [PublicAPI]
 #endif
-public abstract class ReactiveComponent : Component, IReactivePropertyContainer
+public abstract class ReactiveComponent(ReactiveComponent.ActivationStage activationStage) : Component,
+	IReactivePropertyContainer
 {
+	/// <summary>
+	/// Describes at what point during its lifecycle a <see cref="ReactiveComponent" /> will run its activation method.
+	/// </summary>
+	public enum ActivationStage
+	{
+		/// <summary>
+		/// Calls <see cref="ReactiveComponent.OnActivate" /> during <see cref="Component.OnEnabled" />. This is the
+		/// default.
+		/// </summary>
+		OnEnabled,
+
+		/// <summary>
+		/// Calls <see cref="ReactiveComponent.OnActivate" /> during <see cref="Component.OnStart" />. Useful for when
+		/// you want to access data on other components on the same game object that is only available <i>after</i>
+		/// they're enabled.
+		/// </summary>
+		/// <remarks>
+		/// If the component is disabled and re-enabled, the activation will subsequently run during
+		/// <see cref="Component.OnEnabled" /> since <see cref="Component.OnStart" /> is only called once ever.
+		/// </remarks>
+		OnStart,
+	}
+
+	/// <summary>
+	/// When to run this component's activation method.
+	/// </summary>
+	private readonly ActivationStage _activationStage = activationStage;
+
 	/// <summary>
 	/// The disposable for this component's effect root that exists while it's enabled.
 	/// </summary>
 	private IDisposable? _effectRoot;
+
+	/// <summary>
+	/// Whether this component has ever called <see cref="Component.OnStart" />.
+	/// </summary>
+	private bool _hasStarted;
+
+	protected ReactiveComponent()
+		: this(ActivationStage.OnEnabled)
+	{
+	}
 
 	Dictionary<int, IProducer> IReactivePropertyContainer.Producers { get; } = [];
 
@@ -73,8 +112,22 @@ public abstract class ReactiveComponent : Component, IReactivePropertyContainer
 
 	protected sealed override void OnEnabled()
 	{
-		_effectRoot?.Dispose();
-		_effectRoot = EffectRoot(OnActivate);
+		if (_activationStage != ActivationStage.OnStart || _hasStarted)
+		{
+			_effectRoot?.Dispose();
+			_effectRoot = EffectRoot(OnActivate);
+		}
+	}
+
+	protected sealed override void OnStart()
+	{
+		if (_activationStage == ActivationStage.OnStart)
+		{
+			_hasStarted = true;
+
+			_effectRoot?.Dispose();
+			_effectRoot = EffectRoot(OnActivate);
+		}
 	}
 
 	protected sealed override void OnDisabled()

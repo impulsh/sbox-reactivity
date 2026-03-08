@@ -458,6 +458,27 @@ public static class MySingleton
 > [!NOTE]
 > Static reactive properties on generic types are not currently supported. In these cases, you can create a `State` or `Derived` backing field and corresponding property accessors.
 
+### Activation Stage
+
+By default, a reactive component's `OnActivate` method is called during the `OnEnabled` component lifecycle method. If your component needs to access data on another component on the same game object that is populated during `OnEnabled`, you can change your component's activation stage to `ActivationStage.OnStart`.
+
+This changes your component's `OnActivate` method to be called during the `OnStart` component lifecycle method. The effect root will still dispose as usual if the component is disabled.
+
+```csharp
+// Pass the desired activation stage to the base constructor
+public class MyComponent() : ReactiveComponent(ActivationStage.OnStart)
+{
+	protected override void OnActivate()
+	{
+		// Called during OnStart instead of OnEnabled. This is a good place
+		// to fetch some data from another component on the same game object
+	}
+}
+```
+
+> [!NOTE]
+> After activating during `OnStart` for the first time, any subsequent disable/re-enables will activate the component during `OnEnabled` since `OnStart` is only ever called once per component. [See the sbox docs](https://sbox.game/dev/doc/scene/components/execution-order/) for more details.
+
 ## Timers
 
 It's likely you'll want to call some code after a delay, or at regular intervals. There are various timer methods that can help you accomplish this.
