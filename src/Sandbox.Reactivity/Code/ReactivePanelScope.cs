@@ -18,11 +18,7 @@ namespace Sandbox.Reactivity;
 #endif
 public readonly ref struct ReactivePanelScope : IDisposable
 {
-	private readonly Effect? _previousEffect = Reactive.Runtime.CurrentEffect;
-
-	private readonly IReaction? _previousReaction = Reactive.Runtime.CurrentReaction;
-
-	private readonly bool _previousIsUntracking = Reactive.Runtime.IsUntracking;
+	private readonly Effect.ExecutionScope _executionScope;
 
 	internal ReactivePanelScope(IReactivePanel panel)
 	{
@@ -32,19 +28,21 @@ public readonly ref struct ReactivePanelScope : IDisposable
 			previousRoot.Dispose(false);
 		}
 
-		var effectRoot = new Effect(null, _previousEffect, true, () => panel.Version++);
-		panel.RenderEffectRoot = effectRoot;
+		// nested panels don't render immediately when a containing panel's tree is rendering, so the parent is
+		// always null anyway
+		var effectRoot = new Effect(null, null, true, () => panel.Version++);
+		effectRoot.SetDebugInfo(panel.GetType().ToSimpleString(false) + " (Render)",
+			panel is ReactivePanel ? "view_quilt" : "monitor",
+			new CallLocation(2),
+			panel is ReactivePanel reactive ? reactive.GameObject?.GetComponent<IReactivePanel>() : panel);
 
-		Reactive.Runtime.CurrentEffect = effectRoot;
-		Reactive.Runtime.CurrentReaction = effectRoot;
-		Reactive.Runtime.IsUntracking = false;
+		panel.RenderEffectRoot = effectRoot;
+		_executionScope = new Effect.ExecutionScope(effectRoot);
 	}
 
 	public void Dispose()
 	{
-		Reactive.Runtime.CurrentEffect = _previousEffect;
-		Reactive.Runtime.CurrentReaction = _previousReaction;
-		Reactive.Runtime.IsUntracking = _previousIsUntracking;
+		_executionScope.Dispose();
 	}
 }
 #endif

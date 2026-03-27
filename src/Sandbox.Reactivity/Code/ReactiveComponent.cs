@@ -1,4 +1,5 @@
 #if SANDBOX
+using System.Diagnostics;
 using Sandbox.Reactivity.Internals;
 using static Sandbox.Reactivity.Reactive;
 #if JETBRAINS_ANNOTATIONS
@@ -50,7 +51,7 @@ public abstract class ReactiveComponent(ReactiveComponent.ActivationStage activa
 	/// <summary>
 	/// The disposable for this component's effect root that exists while it's enabled.
 	/// </summary>
-	private IDisposable? _effectRoot;
+	private Effect? _effectRoot;
 
 	/// <summary>
 	/// Whether this component has ever called <see cref="Component.OnStart" />.
@@ -101,21 +102,52 @@ public abstract class ReactiveComponent(ReactiveComponent.ActivationStage activa
 		}
 
 		var manager = GameObjectEventManager.GetOrCreate(go);
+		var parent = Runtime.EnsureCurrentEffect();
 
-		Effect(() =>
-		{
-			manager.Add(callback);
+		var effect = new Effect([StackTraceHidden] [DebuggerStepThrough]() =>
+			{
+				manager.Add(callback);
 
-			return () => { manager.Remove(callback); };
-		});
+				return () => manager.Remove(callback);
+			},
+			parent,
+			false);
+
+		effect.SetDebugInfo($"OnEvent<{typeof(T).ToSimpleString(false)}>",
+			"electric_bolt",
+			new CallLocation(1),
+			parent);
+
+		effect.Run();
+	}
+
+	[StackTraceHidden]
+	private void CreateRootEffect()
+	{
+		_effectRoot?.Dispose();
+
+		var parent = Runtime.CurrentEffect;
+		_effectRoot = new Effect([StackTraceHidden] [DebuggerStepThrough]() =>
+			{
+				OnActivate();
+				return null;
+			},
+			parent,
+			false);
+
+		_effectRoot.SetDebugInfo(DisplayInfo.For(this).Name,
+			DisplayInfo.For(this).Icon,
+			new CallLocation(GetType(), nameof(OnActivate)),
+			parent ?? (object?)this);
+
+		_effectRoot.Run();
 	}
 
 	protected sealed override void OnEnabled()
 	{
 		if (_activationStage != ActivationStage.OnStart || _hasStarted)
 		{
-			_effectRoot?.Dispose();
-			_effectRoot = EffectRoot(OnActivate);
+			CreateRootEffect();
 		}
 	}
 
@@ -125,8 +157,7 @@ public abstract class ReactiveComponent(ReactiveComponent.ActivationStage activa
 		{
 			_hasStarted = true;
 
-			_effectRoot?.Dispose();
-			_effectRoot = EffectRoot(OnActivate);
+			CreateRootEffect();
 		}
 	}
 

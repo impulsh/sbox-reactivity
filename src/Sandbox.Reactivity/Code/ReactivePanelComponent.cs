@@ -1,4 +1,5 @@
 #if SANDBOX
+using System.Diagnostics;
 using Sandbox.Reactivity.Internals;
 using static Sandbox.Reactivity.Reactive;
 #if JETBRAINS_ANNOTATIONS
@@ -22,7 +23,7 @@ namespace Sandbox.Reactivity;
 #endif
 public class ReactivePanelComponent : PanelComponent, IReactivePropertyContainer, IReactivePanel
 {
-	private IDisposable? _effectRoot;
+	private Effect? _effectRoot;
 
 	private Effect? _renderEffectRoot;
 
@@ -80,15 +81,27 @@ public class ReactivePanelComponent : PanelComponent, IReactivePropertyContainer
 
 	protected ReactivePanelScope PanelRoot()
 	{
-		_renderEffectRoot?.Dispose();
-		_renderEffectRoot = null;
-
 		return new ReactivePanelScope(this);
 	}
 
 	protected sealed override void OnEnabled()
 	{
-		_effectRoot = EffectRoot(OnActivate);
+		var parent = Runtime.CurrentEffect;
+
+		_effectRoot = new Effect([StackTraceHidden] [DebuggerStepThrough]() =>
+			{
+				OnActivate();
+				return null;
+			},
+			parent,
+			false);
+
+		_effectRoot.SetDebugInfo(DisplayInfo.For(this).Name,
+			DisplayInfo.For(this).Icon,
+			new CallLocation(GetType(), nameof(OnActivate)),
+			parent ?? (object?)this);
+
+		_effectRoot.Run();
 	}
 
 	protected sealed override void OnDisabled()

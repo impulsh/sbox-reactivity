@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Sandbox.Reactivity.Internals.Runtimes;
 
 internal sealed class Runtime : IDisposable
@@ -58,6 +60,17 @@ internal sealed class Runtime : IDisposable
 		IsUntracking = true;
 		IsFlushScheduled = false;
 		_isFlushing = false;
+	}
+
+	/// <summary>
+	/// Returns the currently executing effect.
+	/// </summary>
+	/// <exception cref="InvalidOperationException">
+	/// Thrown if there is no effect that is currently executing.
+	/// </exception>
+	public Effect EnsureCurrentEffect([CallerMemberName] string name = "Effect")
+	{
+		return CurrentEffect ?? throw new InvalidOperationException(name + " must be created in an effect root");
 	}
 
 	public void ScheduleEffect(Effect effect)

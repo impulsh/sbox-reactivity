@@ -23,17 +23,15 @@ public static partial class Reactive
 	/// <typeparam name="T">The type of item in the collection.</typeparam>
 	public static void Each<T>(Func<ICollection<T>> collection, CollectionEachDelegate<T> callback)
 	{
-		if (Runtime.CurrentEffect is not { } parent)
-		{
-			throw new InvalidOperationException("Each must be created inside an effect root");
-		}
-
+		var parent = Runtime.EnsureCurrentEffect();
 		List<CollectionItem<T>> items = [];
 		var isFirstRun = true;
 
 		var eachRoot = new Effect(() =>
 			{
-				Effect(CollectionEffect);
+				var effect = new Effect(CollectionEffect, Runtime.CurrentEffect, true);
+				effect.SetDebugInfo(nameof(CollectionEffect), parent: Runtime.CurrentEffect);
+				effect.Run();
 
 				return () =>
 				{
@@ -49,10 +47,11 @@ public static partial class Reactive
 			parent,
 			false);
 
+		eachRoot.SetDebugInfo($"Each<{typeof(T)}>", "format_list_numbered", new CallLocation(1), parent);
 		eachRoot.Run();
 		return;
 
-		void CollectionEffect()
+		Action? CollectionEffect()
 		{
 			var newItems = collection();
 
@@ -68,7 +67,7 @@ public static partial class Reactive
 				}
 
 				isFirstRun = false;
-				return;
+				return null;
 			}
 
 			if (items.Count > 0 && newItems.Count == 0)
@@ -80,7 +79,7 @@ public static partial class Reactive
 				}
 
 				items.Clear();
-				return;
+				return null;
 			}
 
 			// handle any additions/changes
@@ -120,10 +119,13 @@ public static partial class Reactive
 
 				items.RemoveRange(newItems.Count, items.Count - newItems.Count);
 			}
+
+			return null;
 		}
 	}
 
 	/// <inheritdoc cref="Each{T}(Func{ICollection{T}},CollectionEachDelegate{T})" />
+	[StackTraceHidden]
 	public static void Each<T>(Func<ICollection<T>> collection, Action<T> callback)
 	{
 		Each(collection,
@@ -135,6 +137,7 @@ public static partial class Reactive
 	}
 
 	/// <inheritdoc cref="Each{T}(Func{ICollection{T}},CollectionEachDelegate{T})" />
+	[StackTraceHidden]
 	public static void Each<T>(Func<ICollection<T>> collection, Func<T, Action?> callback)
 	{
 		Each(collection, [StackTraceHidden] [DebuggerStepThrough](value, _) => callback(value));
@@ -163,6 +166,11 @@ public static partial class Reactive
 			// not a child of the collection effect since we don't want to re-run whenever the collection changes; the
 			// `Each` method will handle the lifetime of each item's effect
 			var effect = new Effect(() => callback(value, index), null, false);
+
+			// but we do want to show it in the debugger as a child of the collection effect
+			effect.SetDebugInfo($"{index}: {value?.ToString() ?? "null"}",
+				"radio_button_checked",
+				parent: Runtime.CurrentEffect);
 			effect.Run();
 
 			_root = effect;

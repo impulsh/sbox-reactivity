@@ -5,7 +5,7 @@ namespace Sandbox.Reactivity.Internals;
 /// <summary>
 /// An object that reacts to changes made by any <see cref="IProducer" /> added as dependencies.
 /// </summary>
-internal interface IReaction
+internal interface IReaction : IReactiveObject
 {
 	/// <summary>
 	/// The list of <see cref="IProducer" />s that this reaction depends on. If any of the producers change their value,

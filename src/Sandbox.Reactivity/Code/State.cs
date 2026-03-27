@@ -91,4 +91,16 @@ public sealed class State<T> : IProducer<T>, IWritableProducer<T>, IState<T>, IR
 	{
 		return state.Value;
 	}
+
+#if DEBUG && SANDBOX
+	string? IReactiveObject.Name { get; set; } = "State";
+
+	string? IReactiveObject.Icon { get; set; } = "center_focus_strong";
+
+	string? IReactiveObject.Location { get; set; }
+
+	object? IReactiveObject.Parent { get; set; }
+
+	PropertyDescription? IReactiveObject.Container { get; set; }
+#endif
 }

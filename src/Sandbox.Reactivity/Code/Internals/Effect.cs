@@ -8,7 +8,7 @@ namespace Sandbox.Reactivity.Internals;
 /// </summary>
 /// <seealso cref="Reactive.Effect(Action)" />
 /// <seealso cref="Reactive.Effect(Func{Action?})" />
-internal class Effect : IReaction, IDisposable
+internal partial class Effect : IReaction, IDisposable
 {
 	/// <summary>
 	/// The list of effects that were created while this effect was executing.
@@ -23,7 +23,7 @@ internal class Effect : IReaction, IDisposable
 	/// <summary>
 	/// Whether this effect will track reads of reactive objects during execution to add as dependencies.
 	/// </summary>
-	private readonly bool _shouldTrackDependencies;
+	internal readonly bool ShouldTrackDependencies;
 
 	/// <summary>
 	/// The current cancellation token source for this effect, if any.
@@ -36,11 +36,6 @@ internal class Effect : IReaction, IDisposable
 	private List<object?>? _capturedValues;
 
 	/// <summary>
-	/// Whether this effect is disposed and can no longer run.
-	/// </summary>
-	private bool _isDisposed;
-
-	/// <summary>
 	/// The teardown function that was returned in the last run. This can be non-null before the first run if one was
 	/// specified during instantiation.
 	/// </summary>
@@ -49,7 +44,7 @@ internal class Effect : IReaction, IDisposable
 	internal Effect(Func<Action?>? fn, Effect? parent, bool shouldTrackDependencies, Action? overrideTeardown = null)
 	{
 		_fn = fn;
-		_shouldTrackDependencies = shouldTrackDependencies;
+		ShouldTrackDependencies = shouldTrackDependencies;
 		_teardown = overrideTeardown;
 
 		if (_fn == null)
@@ -63,10 +58,15 @@ internal class Effect : IReaction, IDisposable
 	}
 
 	/// <summary>
+	/// Whether this effect is disposed and can no longer run.
+	/// </summary>
+	internal bool IsDisposed { get; private set; }
+
+	/// <summary>
 	/// Returns a cancellation token for this effect that will cancel when it re-runs, or when it disposes.
 	/// </summary>
 	public CancellationToken CancelToken =>
-		_isDisposed ? CancellationToken.None : (_cancelSource ??= new CancellationTokenSource()).Token;
+		IsDisposed ? CancellationToken.None : (_cancelSource ??= new CancellationTokenSource()).Token;
 
 	public void Dispose()
 	{
@@ -83,7 +83,7 @@ internal class Effect : IReaction, IDisposable
 
 	void IReaction.OnDependencyChanged(ReactionState newState)
 	{
-		if (_isDisposed || State < newState)
+		if (IsDisposed || State < newState)
 		{
 			// disposed or this effect has already been scheduled to run
 			return;
@@ -109,39 +109,17 @@ internal class Effect : IReaction, IDisposable
 	/// </summary>
 	public void Run()
 	{
-		if (_isDisposed)
+		if (IsDisposed)
 		{
 			return;
 		}
 
 		Teardown();
+		using var _ = new ExecutionScope(this);
 
-		if (_fn == null)
-		{
-			return;
-		}
-
-		var previousEffect = Reactive.Runtime.CurrentEffect;
-		var previousReaction = Reactive.Runtime.CurrentReaction;
-		var previousIsUntracking = Reactive.Runtime.IsUntracking;
-
-		Reactive.Runtime.CurrentEffect = this;
-		Reactive.Runtime.CurrentReaction = _shouldTrackDependencies ? this : null;
-		Reactive.Runtime.IsUntracking = !_shouldTrackDependencies;
-
-		// mark as up to date before running so that any dependency changes that occur during execution will properly
-		// schedule this effect to run at the end of the current flush operation
-		State = ReactionState.UpToDate;
-
-		try
+		if (_fn != null)
 		{
 			_teardown = _fn();
-		}
-		finally
-		{
-			Reactive.Runtime.CurrentEffect = previousEffect;
-			Reactive.Runtime.CurrentReaction = previousReaction;
-			Reactive.Runtime.IsUntracking = previousIsUntracking;
 		}
 
 		// capture the value of each dependency if there's a teardown function so we can restore it later
@@ -154,8 +132,6 @@ internal class Effect : IReaction, IDisposable
 				_capturedValues.Add(producer.NonReactiveValue);
 			}
 		}
-
-		ReadVersion = Reactive.Runtime.Version;
 	}
 
 	/// <summary>
@@ -166,13 +142,19 @@ internal class Effect : IReaction, IDisposable
 	/// </param>
 	public void Dispose(bool performTeardown)
 	{
-		if (_isDisposed)
+		if (IsDisposed)
 		{
 			return;
 		}
 
-		_isDisposed = true;
+		IsDisposed = true;
+#if DEBUG && SANDBOX
+		OnDisposed?.Invoke();
 
+		OnChildEffectCreated = null;
+		OnRerun = null;
+		OnDisposed = null;
+#endif
 		if (performTeardown)
 		{
 			Teardown();
@@ -260,4 +242,41 @@ internal class Effect : IReaction, IDisposable
 			Dependencies.Clear();
 		}
 	}
+
+#if DEBUG && SANDBOX
+	/// <summary>
+	/// Called after an effect with no parent has been created.
+	/// </summary>
+	public static Action<Effect>? OnEffectRootCreated;
+
+	/// <summary>
+	/// Whether this effect has ever run.
+	/// </summary>
+	private bool _hasEverRun;
+
+	/// <summary>
+	/// Called when an effect was created inside this effect.
+	/// </summary>
+	internal event Action<Effect>? OnChildEffectCreated;
+
+	/// <summary>
+	/// Called when this effect re-runs. Does not call for the first run.
+	/// </summary>
+	internal event Action? OnRerun;
+
+	/// <summary>
+	/// Called when this effect is disposed.
+	/// </summary>
+	internal event Action? OnDisposed;
+
+	public string? Name { get; set; }
+
+	public string? Icon { get; set; }
+
+	public string? Location { get; set; }
+
+	public object? Parent { get; set; }
+
+	public PropertyDescription? Container { get; set; }
+#endif
 }

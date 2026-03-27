@@ -6,6 +6,7 @@ using Microsoft.Extensions.FileSystemGlobbing;
 var cwd = Environment.CurrentDirectory;
 var inputPath = Path.GetFullPath(Path.Combine("src", "Sandbox.Reactivity"), Environment.CurrentDirectory);
 var outputPath = Path.GetFullPath("publish", Environment.CurrentDirectory);
+List<string> publishedFiles = [];
 
 Console.WriteLine($"📂 Emitting files to {outputPath}");
 
@@ -23,7 +24,8 @@ matcher.AddExcludePatterns([
 ]);
 matcher.AddIncludePatterns([
 	"reactivity.sbproj",
-	"Code/**/*.cs"
+	"Code/**/*.cs",
+	"Editor/**/*.cs"
 ]);
 
 foreach (var source in matcher.GetResultsInFullPath(inputPath))
@@ -43,6 +45,8 @@ foreach (var source in matcher.GetResultsInFullPath(inputPath))
 
 	Directory.CreateDirectory(directory);
 	File.Copy(source, destination);
+
+	publishedFiles.Add(relative);
 }
 
 Console.WriteLine("\n🔧 Preparing for publish");
@@ -73,10 +77,7 @@ Console.WriteLine("    ℹ️ Cleaning editor content");
 
 Matcher removeMatcher = new();
 removeMatcher.AddInclude("**/*");
-removeMatcher.AddExcludePatterns([
-	"reactivity.sbproj",
-	"Code/**/*.cs"
-]);
+removeMatcher.AddExcludePatterns(publishedFiles);
 
 foreach (var file in removeMatcher.GetResultsInFullPath(outputPath))
 {

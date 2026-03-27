@@ -32,11 +32,15 @@ public static partial class Reactive
 	/// Creates a reactive value that can be changed at any time.
 	/// </summary>
 	/// <param name="initialValue">The initial value of the state.</param>
+	/// <param name="name">The display name of this state for debug purposes.</param>
 	/// <typeparam name="T">The type of value this state holds.</typeparam>
 	/// <returns>The created state.</returns>
-	public static State<T> State<T>(T initialValue)
+	public static State<T> State<T>(T initialValue, string? name = null)
 	{
-		return new State<T>(initialValue);
+		var state = new State<T>(initialValue);
+		state.SetDebugInfo(name, location: new CallLocation(1));
+
+		return state;
 	}
 
 	/// <summary>
@@ -53,11 +57,15 @@ public static partial class Reactive
 	/// The function to call when the value needs to be computed. Whenever a reactive value that was read during its
 	/// execution has changed, it will re-run.
 	/// </param>
+	/// <param name="name">The display name of this derived state for debug purposes.</param>
 	/// <typeparam name="T">The type of value this derived state holds.</typeparam>
 	/// <returns>The created derived state.</returns>
-	public static Derived<T> Derived<T>(Func<T> compute)
+	public static Derived<T> Derived<T>(Func<T> compute, string? name = null)
 	{
-		return new Derived<T>(compute);
+		var derived = new Derived<T>(compute);
+		derived.SetDebugInfo(name, location: new CallLocation(1));
+
+		return derived;
 	}
 
 	/// <inheritdoc cref="Effect(Action)" />
@@ -67,12 +75,10 @@ public static partial class Reactive
 	/// </remarks>
 	public static void Effect(Func<Action?> callback)
 	{
-		if (Runtime.CurrentEffect is not { } parent)
-		{
-			throw new InvalidOperationException("Effect must be created inside an effect root");
-		}
-
+		var parent = Runtime.EnsureCurrentEffect();
 		var effect = new Effect(callback, parent, true);
+
+		effect.SetDebugInfo(location: new CallLocation(1), parent: parent);
 		effect.Run();
 	}
 
@@ -81,6 +87,7 @@ public static partial class Reactive
 	/// </summary>
 	/// <param name="callback">The function to run.</param>
 	/// <seealso cref="Effect(Func{Action})" />
+	[StackTraceHidden]
 	public static void Effect(Action callback)
 	{
 		Effect([StackTraceHidden] [DebuggerStepThrough]() =>
@@ -110,6 +117,7 @@ public static partial class Reactive
 			parent,
 			false);
 
+		root.SetDebugInfo(icon: "anchor", location: new CallLocation(1), parent: parent);
 		root.Run();
 		return root;
 	}
@@ -126,12 +134,7 @@ public static partial class Reactive
 	{
 		try
 		{
-			if (Runtime.CurrentEffect is not { } parent)
-			{
-				throw new InvalidOperationException("Timeout must be created inside an effect root");
-			}
-
-			var token = parent.CancelToken;
+			var token = Runtime.EnsureCurrentEffect().CancelToken;
 #if SANDBOX
 			await GameTask.Delay(milliseconds, token);
 #else
@@ -161,6 +164,7 @@ public static partial class Reactive
 	/// </summary>
 	/// <param name="callback">The function to run.</param>
 	/// <param name="duration">How long to wait before running the function.</param>
+	[StackTraceHidden]
 	public static void Timeout(Action callback, TimeSpan duration)
 	{
 		Timeout(callback, (int)duration.TotalMilliseconds);
@@ -181,12 +185,7 @@ public static partial class Reactive
 	{
 		try
 		{
-			if (Runtime.CurrentEffect is not { } parent)
-			{
-				throw new InvalidOperationException("Timeout must be created inside an effect root");
-			}
-
-			var token = parent.CancelToken;
+			var token = Runtime.EnsureCurrentEffect().CancelToken;
 
 			if (immediate)
 			{
@@ -218,7 +217,7 @@ public static partial class Reactive
 #else
 			await Console.Error.WriteLineAsync
 #endif
-				($"Exception occurred during timeout: {e}");
+				($"Exception occurred during interval: {e}");
 		}
 	}
 
@@ -231,6 +230,7 @@ public static partial class Reactive
 	/// <param name="immediate">
 	/// Whether to run the function immediately instead of waiting for the first interval.
 	/// </param>
+	[StackTraceHidden]
 	public static void Interval(Action callback, TimeSpan duration, bool immediate = false)
 	{
 		Interval(callback, (int)duration.TotalMilliseconds, immediate);
@@ -250,11 +250,17 @@ public static partial class Reactive
 	public static void Tick(Action callback, bool immediate = false, TickStage stage = TickStage.Start)
 	{
 #if SANDBOX
-		Effect(() =>
-		{
-			SandboxRuntimeExecutor.AddTickFunction(stage, callback);
-			return () => { SandboxRuntimeExecutor.RemoveTickFunction(stage, callback); };
-		});
+		var parent = Runtime.EnsureCurrentEffect();
+		var effect = new Effect(() =>
+			{
+				SandboxRuntimeExecutor.AddTickFunction(stage, callback);
+				return () => SandboxRuntimeExecutor.RemoveTickFunction(stage, callback);
+			},
+			parent,
+			false);
+
+		effect.SetDebugInfo("Tick", "update", new CallLocation(1), parent);
+		effect.Run();
 #else
 		Interval(callback, 33);
 #endif
@@ -282,11 +288,17 @@ public static partial class Reactive
 	public static void Frame(Action callback, bool immediate = false, FrameStage stage = FrameStage.Start)
 	{
 #if SANDBOX
-		Effect(() =>
-		{
-			SandboxRuntimeExecutor.AddFrameFunction(stage, callback);
-			return () => { SandboxRuntimeExecutor.RemoveFrameFunction(stage, callback); };
-		});
+		var parent = Runtime.EnsureCurrentEffect();
+		var effect = new Effect(() =>
+			{
+				SandboxRuntimeExecutor.AddFrameFunction(stage, callback);
+				return () => { SandboxRuntimeExecutor.RemoveFrameFunction(stage, callback); };
+			},
+			parent,
+			false);
+
+		effect.SetDebugInfo("Frame", "burst_mode", new CallLocation(1), parent);
+		effect.Run();
 #else
 		Interval(callback, 33);
 #endif
@@ -365,5 +377,18 @@ public static partial class Reactive
 	public static CancellationToken GetEffectCancelToken()
 	{
 		return Runtime.CurrentEffect is { CancelToken: var cancelToken } ? cancelToken : CancellationToken.None;
+	}
+
+	/// <summary>
+	/// Sets the name of the currently executing effect for debug purposes.
+	/// </summary>
+	/// <param name="debugName">The name to assign to the effect.</param>
+	/// <remarks>Calls to this method are removed in release builds.</remarks>
+	[Conditional("DEBUG")]
+	public static void SetEffectName(string debugName)
+	{
+#if DEBUG && SANDBOX
+		Runtime.EnsureCurrentEffect().Name = debugName;
+#endif
 	}
 }

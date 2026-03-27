@@ -1,3 +1,5 @@
+#if DEBUG
+#endif
 using Sandbox.Reactivity.Internals;
 #if JETBRAINS_ANNOTATIONS
 using JetBrains.Annotations;
@@ -210,4 +212,16 @@ public sealed class Derived<T> : IProducer<T>, IWritableProducer<T>, IReaction, 
 	{
 		return state.Value;
 	}
+
+#if DEBUG && SANDBOX
+	string? IReactiveObject.Name { get; set; } = "Derived";
+
+	string? IReactiveObject.Icon { get; set; } = "functions";
+
+	string? IReactiveObject.Location { get; set; }
+
+	object? IReactiveObject.Parent { get; set; }
+
+	PropertyDescription? IReactiveObject.Container { get; set; }
+#endif
 }

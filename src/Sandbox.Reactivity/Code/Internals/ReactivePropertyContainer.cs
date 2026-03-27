@@ -92,11 +92,17 @@ public static class ReactivePropertyContainer
 			}
 
 			producer = new Derived<T>(method.CreateDelegate<Func<T>>(target));
+			producer.SetDebugInfo(location: $"{method.SourceFile}:{method.SourceLine}");
 		}
 		else
 		{
 			producer = new State<T>(defaultValue);
+			producer.SetDebugInfo(location: $"{property.SourceFile}:{property.SourceLine}");
 		}
+
+		producer.SetDebugInfo(property.Name,
+			parent: target ?? property.TypeDescription.TargetType,
+			container: property);
 
 		states.Add(memberIdent, producer);
 		return (TProducer)producer;

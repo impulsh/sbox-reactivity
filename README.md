@@ -57,6 +57,7 @@ public class MyComponent : ReactiveComponent
 - [Timers](#timers)
 - [Collections](#collections)
 - [Scene Events](#scene-events)
+- [Debugger](#debugger)
 
 ---
 
@@ -443,11 +444,11 @@ public static class MySingleton
 {
 	[Reactive]
 	public static int Count { get; set; } = 1;
-	
+
 	[Reactive]
 	[Derived(nameof(_isEven))]
 	public static bool IsEven { get; }
-	
+
 	private static bool _isEven()
 	{
 		return Count % 2 == 0;
@@ -782,3 +783,7 @@ The `SendDirect` method on a game object sends a scene event directly to that ga
 ```csharp
 gameObject.SendDirect(new PrintEvent("hello world"));
 ```
+
+## Debugger
+
+You can open up the debugger in the editor by clicking `View > Reactivity Debugger`. The debugger shows a tree of all active effects that can be inspected to view their current state. This includes what kind of effect it is, where it was defined, its dependencies, what reactive properties were used, what game object created it, etc.

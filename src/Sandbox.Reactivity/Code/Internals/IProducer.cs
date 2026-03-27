@@ -5,7 +5,7 @@ namespace Sandbox.Reactivity.Internals;
 /// <summary>
 /// A reactive object that produces a value and can be depended upon by a <see cref="IReaction" />.
 /// </summary>
-internal interface IProducer
+internal interface IProducer : IReactiveObject
 {
 	/// <summary>
 	/// The list of <see cref="IReaction" />s that have added this producer as a dependency.
