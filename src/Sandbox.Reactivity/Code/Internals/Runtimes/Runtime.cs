@@ -106,12 +106,22 @@ internal sealed class Runtime : IDisposable
 					_pendingEffects.Clear();
 					_pendingEffects.TrimExcess(16);
 
-					throw new InvalidOperationException("Infinite loop detected");
+#if DEBUG
+					var exception = new InfiniteLoopException(_effectExecutions);
+					OnFlushInfiniteLoop?.Invoke(exception);
+
+					throw exception;
+#else
+					throw new InfiniteLoopException();
+#endif
 				}
 
 				if (effect.ShouldRun)
 				{
 					effect.Run();
+#if DEBUG
+					_effectExecutions[effect] = _effectExecutions.GetValueOrDefault(effect) + 1;
+#endif
 				}
 			}
 		}
@@ -119,6 +129,21 @@ internal sealed class Runtime : IDisposable
 		{
 			_flushDepth = 0;
 			_isFlushing = false;
+#if DEBUG
+			_effectExecutions.Clear();
+#endif
 		}
 	}
+
+#if DEBUG
+	/// <summary>
+	/// Which effects have executing during the current flush, and how many times they've executed.
+	/// </summary>
+	private readonly Dictionary<Effect, int> _effectExecutions = [];
+
+	/// <summary>
+	/// Called when an infinite loop occurred during a flush.
+	/// </summary>
+	public static event Action<InfiniteLoopException>? OnFlushInfiniteLoop;
+#endif
 }

@@ -787,3 +787,51 @@ gameObject.SendDirect(new PrintEvent("hello world"));
 ## Debugger
 
 You can open up the debugger in the editor by clicking `View > Reactivity Debugger`. The debugger shows a tree of all active effects that can be inspected to view their current state. This includes what kind of effect it is, where it was defined, its dependencies, what reactive properties were used, what game object created it, etc.
+
+### Naming Effects
+
+It wouldn't be very useful if every active effect was only displayed as "Effect" in the debugger. Most effects that are created outside of your own code (i.e. internal effects) are given a name to make them easier to identify. If you'd like to assign a name to your own effects, you can use the `SetEffectName` method.
+
+```csharp
+Effect(() =>
+{
+	// Sets the display name of this effect to "My Effect"
+	SetEffectName("My Effect");
+});
+
+public class MyComponent : ReactiveComponent
+{
+	protected override void OnActivate()
+	{
+		// Since this method is run inside of an effect root, it will overwrite
+		// the default "My Component" name
+		SetEffectName("My Cool Effect 👍");
+	}
+}
+```
+
+> [!NOTE]
+> Effect names do not exist in non-debug builds. As such, calls to `SetEffectName` are removed in non-debug builds and you don't need to remove them or wrap them in `#if DEBUG` compilation conditions.
+
+### Naming States
+
+Reactive values created with the `State` or `Derived` methods can also be named by passing it as a parameter. Reactive values created by reactive properties will automatically inherit all the display information from the property.
+
+```csharp
+// Shows up as "My State" when displayed as an effect dependency
+var myState = State(false, "My State");
+
+public class MyComponent : ReactiveComponent
+{
+	// Shows up as "My Reactive Property" when displayed as
+	// an effect dependency
+	[Reactive]
+	public bool MyReactiveProperty { get; set; } = true;
+}
+```
+
+### Infinite Loops
+
+It's possible for effects to re-run indefinitely if they modify one of their own dependencies (i.e. reading and writing to the same reactive value). When more than 1000 effects run during a flush, it's assumed that an infinite loop is occurring and an exception will be thrown.
+
+The error that's logged to the console can be clicked to inspect the list of effects that ran before the infinite loop was broken.

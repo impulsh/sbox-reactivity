@@ -7,15 +7,17 @@ namespace Sandbox.Reactivity.Editor.Inspector;
 /// <summary>
 /// A property that corresponds to an <see cref="IReactiveObject" />'s parent object.
 /// </summary>
-internal sealed class SerializedReactiveParentProperty(IReactiveObject reactive) : SerializedProperty
+internal sealed class SerializedReactiveParentProperty(IReactiveObject reactive)
+	: SerializedReactiveObjectProperty(reactive)
 {
-	public override Type PropertyType { get; } = reactive.Parent switch
-	{
-		GameObject => typeof(GameObject),
-		Component => typeof(Component),
-		IReactiveObject => reactive.GetType(),
-		_ => typeof(object),
-	};
+	public override Type PropertyType =>
+		ReactiveObject.Parent switch
+		{
+			GameObject => typeof(GameObject),
+			Component => typeof(Component),
+			IReactiveObject => ReactiveObject.GetType(),
+			_ => typeof(object),
+		};
 
 	public override string Name => "Parent";
 
@@ -24,18 +26,11 @@ internal sealed class SerializedReactiveParentProperty(IReactiveObject reactive)
 	public override string Description =>
 		"The object that created and/or manages the lifetime of this reactive object, including any descendant reactive objects.";
 
-	public override bool IsEditable => false;
-
-	public override bool IsValid =>
-		reactive is not Effect { IsDisposed: true } && reactive.Parent is { } && base.IsValid;
-
-	public override void SetValue<T>(T value)
-	{
-	}
+	public override bool IsValid => ReactiveObject.Parent is { } && base.IsValid;
 
 	public override T GetValue<T>(T defaultValue = default!)
 	{
-		return ValueToType(reactive.Parent, defaultValue);
+		return ValueToType(ReactiveObject.Parent, defaultValue);
 	}
 }
 

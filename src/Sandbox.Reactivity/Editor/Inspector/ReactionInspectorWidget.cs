@@ -21,18 +21,21 @@ internal sealed class ReactionInspectorWidget : InspectorWidget
 		_reaction = so.Targets.OfType<IReaction>().First();
 		_displayName = _reaction.GetType().ToRichText();
 
-		Layout = Layout.Column();
-
-		var scroller = Layout.Add(new ScrollArea(this)
+		Layout = new Column
 		{
-			Canvas = new Widget
-			{
-				HorizontalSizeMode = SizeMode.Flexible,
-				Layout = Layout.Column(),
-			},
-		});
+			Children =
+			[
+				new ScrollArea(this)
+				{
+					Canvas = new Widget
+					{
+						HorizontalSizeMode = SizeMode.Flexible,
+						Layout = _rootLayout = new Column(),
+					},
+				},
+			],
+		};
 
-		_rootLayout = scroller.Canvas.Layout;
 		Rebuild();
 
 		if (_reaction is Effect effect)
