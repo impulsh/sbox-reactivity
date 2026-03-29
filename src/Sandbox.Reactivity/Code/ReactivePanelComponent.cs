@@ -86,20 +86,20 @@ public class ReactivePanelComponent : PanelComponent, IReactivePropertyContainer
 
 	protected sealed override void OnEnabled()
 	{
-		var parent = Runtime.CurrentEffect;
-
+		// component lifetimes are managed by their owning game objects, it doesn't make sense to bind it to the
+		// lifetime of the currently executing effect
 		_effectRoot = new Effect([StackTraceHidden] [DebuggerStepThrough]() =>
 			{
 				OnActivate();
 				return null;
 			},
-			parent,
+			null,
 			false);
 
 		_effectRoot.SetDebugInfo(DisplayInfo.For(this).Name,
 			DisplayInfo.For(this).Icon,
 			new CallLocation(GetType(), nameof(OnActivate)),
-			parent ?? (object?)this);
+			this);
 
 		_effectRoot.Run();
 	}
