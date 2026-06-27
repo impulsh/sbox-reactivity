@@ -58,9 +58,9 @@ internal readonly ref struct CallLocation
 			}
 
 #if SANDBOX
-			var codePath = Project.Current.GetCodePath();
+			var codePath = Project.Current?.GetCodePath();
 
-			if (_location.StartsWith(codePath, StringComparison.InvariantCultureIgnoreCase))
+			if (codePath != null && _location.StartsWith(codePath, StringComparison.InvariantCultureIgnoreCase))
 			{
 				_location = Path.GetRelativePath(codePath, _location);
 			}
